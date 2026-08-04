@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin Login — Netbank Billing Console</title>
+<link rel="icon" href="/brand/favicon-32.png" type="image/png"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;min-height:100vh;display:flex;flex-direction:column;}
+header{background:#003f88;color:#fff;padding:14px 28px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 6px rgba(0,0,0,.18);}
+header img{height:34px;}
+header h1{font-size:1.1rem;font-weight:700;}
+.wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 16px;}
+.card{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,63,136,.12);padding:36px 40px;width:100%;max-width:380px;}
+.card h2{font-size:1.05rem;font-weight:700;color:#003f88;margin-bottom:6px;}
+.card p{font-size:.83rem;color:#666;margin-bottom:24px;}
+label{display:block;font-size:.80rem;font-weight:600;color:#444;margin-bottom:5px;}
+input[type=password]{width:100%;padding:9px 12px;border:1px solid #dde3ed;border-radius:7px;font-size:.90rem;background:#fafbfc;margin-bottom:18px;}
+input[type=password]:focus{outline:2px solid rgba(0,63,136,.30);border-color:#003f88;}
+button{width:100%;padding:10px;background:#003f88;color:#fff;border:none;border-radius:7px;font-size:.92rem;font-weight:700;cursor:pointer;}
+button:hover{background:#00306b;}
+.err{background:#fde8e8;color:#c0392b;border:1px solid #f5c6c6;border-radius:6px;padding:9px 12px;font-size:.83rem;margin-bottom:14px;}
+</style>
+</head>
+<body>
+<header>
+  <img src="/brand/favicon-192.png" alt="Netbank"/>
+  <h1>Billing Console</h1>
+</header>
+<div class="wrap">
+  <div class="card">
+    <h2>Admin Access</h2>
+    <p>Enter the admin key to manage partners and fee rules.</p>
+    <form method="POST" action="/admin/login">
+      <label for="key">Admin Key</label>
+      <input type="password" id="key" name="key" autofocus autocomplete="current-password" placeholder="Enter admin key"/>
+      <button type="submit">Sign In</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

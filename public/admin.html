@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Partner Admin — Netbank Billing Console</title>
+<link rel="icon" href="/brand/favicon-32.png" type="image/png"/>
+<style>
+:root{
+  --nb-blue:#003f88;--nb-gold:#d4a017;--nb-light:#e8f0fe;
+  --nb-green:#1a6b3c;--nb-red:#c0392b;--nb-text:#1a1a2e;
+  --nb-border:#dde3ed;--nb-bg:#f4f6fb;--radius:8px;
+  --shadow:0 2px 8px rgba(0,63,136,.10);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--nb-bg);color:var(--nb-text);min-height:100vh;}
+header{background:var(--nb-blue);color:#fff;padding:14px 28px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 6px rgba(0,0,0,.18);}
+header img{height:36px;}
+header h1{font-size:1.15rem;font-weight:700;letter-spacing:.01em;}
+header .hlinks{margin-left:auto;display:flex;align-items:center;gap:18px;}
+header a{color:#b3c9f8;font-size:.85rem;text-decoration:none;}
+header a:hover{color:#fff;text-decoration:underline;}
+header a.logout-link{opacity:.7;font-size:.80rem;}
+.page{max-width:1200px;margin:0 auto;padding:28px 20px;}
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.top-bar h2{font-size:1.1rem;font-weight:700;color:var(--nb-blue);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border:none;border-radius:var(--radius);font-size:.88rem;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn-primary{background:var(--nb-blue);color:#fff;}
+.btn-primary:hover:not(:disabled){background:#00306b;}
+.btn-danger{background:var(--nb-red);color:#fff;}
+.btn-danger:hover:not(:disabled){background:#a93226;}
+.btn-secondary{background:#e8ecf2;color:var(--nb-text);}
+.btn-secondary:hover:not(:disabled){background:#d0d6e4;}
+.btn-sm{padding:5px 12px;font-size:.80rem;}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+thead{background:var(--nb-blue);color:#fff;}
+th{padding:11px 14px;text-align:left;font-size:.82rem;font-weight:600;letter-spacing:.02em;}
+td{padding:10px 14px;font-size:.83rem;border-bottom:1px solid var(--nb-border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#f0f4ff;}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;}
+.badge-yes{background:#d4edda;color:#155724;}
+.badge-no{background:#f8d7da;color:#721c24;}
+.fee-pill{display:inline-block;background:#eef2fc;border:1px solid #c5d2ef;border-radius:10px;padding:2px 8px;font-size:.75rem;color:#2c4a8c;margin:1px;}
+.actions{display:flex;gap:6px;}
+/* Modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;}
+.overlay.open{display:flex;}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:740px;box-shadow:0 8px 40px rgba(0,0,0,.2);animation:slideIn .18s ease;}
+@keyframes slideIn{from{transform:translateY(-18px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-header{background:var(--nb-blue);color:#fff;padding:16px 22px;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between;}
+.modal-header h3{font-size:1rem;font-weight:700;}
+.modal-close{background:none;border:none;color:#fff;font-size:1.3rem;cursor:pointer;line-height:1;}
+.modal-body{padding:20px 22px;max-height:74vh;overflow-y:auto;}
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--nb-border);margin-bottom:20px;}
+.tab{padding:8px 20px;font-size:.87rem;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:#666;transition:color .12s,border-color .12s;}
+.tab.active{color:var(--nb-blue);border-bottom-color:var(--nb-blue);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+/* Form */
+.form-row{margin-bottom:14px;}
+.form-row label{display:block;font-size:.80rem;font-weight:600;color:#444;margin-bottom:4px;}
+.form-row input[type=text],.form-row input[type=email],.form-row input[type=number],.form-row select,.form-row textarea{width:100%;padding:7px 10px;border:1px solid var(--nb-border);border-radius:6px;font-size:.85rem;background:#fafbfc;}
+.form-row input:focus,.form-row select:focus,.form-row textarea:focus{outline:2px solid var(--nb-blue)40;border-color:var(--nb-blue);}
+.form-row textarea{resize:vertical;min-height:50px;}
+.form-hint{font-size:.74rem;color:#888;margin-top:3px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.check-row{display:flex;align-items:center;gap:8px;font-size:.85rem;padding:4px 0;}
+.check-row input[type=checkbox]{width:16px;height:16px;cursor:pointer;}
+.section-title{font-size:.82rem;font-weight:700;color:var(--nb-blue);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--nb-border);}
+.fee-block{background:#f7f9fd;border:1px solid #dde3f0;border-radius:8px;padding:14px;margin-bottom:12px;}
+.fee-block h4{font-size:.82rem;font-weight:700;color:#2c4a8c;margin-bottom:10px;}
+.fee-type-fields{margin-top:10px;}
+/* Tiers table */
+.tiers-table{width:100%;border-collapse:collapse;margin-top:8px;}
+.tiers-table th{background:#e8ecf6;font-size:.76rem;padding:5px 8px;text-align:left;}
+.tiers-table td{padding:4px 6px;border-bottom:1px solid #e0e5f0;}
+.tiers-table input{width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:.80rem;}
+.tiers-table .del-tier{background:none;border:none;color:var(--nb-red);cursor:pointer;font-size:1rem;}
+.modal-footer{padding:16px 22px;border-top:1px solid var(--nb-border);display:flex;justify-content:flex-end;gap:10px;background:#fafbfc;border-radius:0 0 12px 12px;}
+/* Toast */
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{padding:11px 20px;border-radius:8px;color:#fff;font-size:.87rem;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,.18);animation:fadeIn .2s ease;min-width:220px;}
+.toast-ok{background:#1a6b3c;}
+.toast-err{background:#c0392b;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.loading{text-align:center;padding:40px;color:#888;}
+.empty{text-align:center;padding:40px;color:#888;font-size:.9rem;}
+.rule-box{background:#f0f4ff;border:1px solid #c8d4f0;border-radius:8px;padding:12px 14px;margin-bottom:12px;}
+.rule-row{display:flex;align-items:baseline;gap:10px;padding:4px 0;font-size:.82rem;border-bottom:1px solid #dde5f8;}
+.rule-row:last-child{border-bottom:none;}
+.rule-key{font-weight:700;color:#2c4a8c;min-width:140px;flex-shrink:0;}
+.rule-val{color:#444;flex:1;}
+.rtag{display:inline-block;background:#d4e0ff;color:#1a3a8c;border-radius:10px;padding:1px 8px;font-size:.75rem;font-weight:600;margin:1px 2px;}
+.rtag-gray{background:#e4e8f0;color:#555;}
+.rule-note{font-size:.76rem;color:#888;margin-top:3px;}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff8;border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <img src="/brand/favicon-192.png" alt="Netbank"/>
+  <h1>Billing Console — Partner Admin</h1>
+  <div class="hlinks">
+    <a href="/">&#8592; Back to Billing Console</a>
+    <a href="/admin/logout" class="logout-link">Logout</a>
+  </div>
+</header>
+<div class="page">
+  <div class="top-bar">
+    <h2>Partner Registry</h2>
+    <button class="btn btn-primary" onclick="openAdd()">+ Add Partner</button>
+  </div>
+  <div id="tableWrap"><div class="loading">Loading partners…</div></div>
+</div>
+
+<!-- Delete confirm overlay -->
+<div class="overlay" id="deleteOverlay">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header"><h3>Confirm Delete</h3><button class="modal-close" onclick="closeDelete()">&#10005;</button></div>
+    <div class="modal-body">
+      <p style="font-size:.9rem;">Delete partner <strong id="deletePartnerName"></strong>? This action cannot be undone and will immediately remove it from the billing console.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDelete()">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn" onclick="doDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit modal -->
+<div class="overlay" id="editOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add Partner</h3>
+      <button class="modal-close" onclick="closeEdit()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('info')">Partner Info</div>
+        <div class="tab" onclick="switchTab('rules')">Detection Rules</div>
+        <div class="tab" onclick="switchTab('fees')">Fee Rules</div>
+      </div>
+
+      <!-- Info tab -->
+      <div class="tab-panel active" id="tab-info">
+        <div class="section-title">Identity</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Partner ID (slug) *</label>
+            <input type="text" id="f-id" placeholder="e.g. my-partner" oninput="onIdInput()"/>
+            <div class="form-hint">Lowercase letters, numbers, hyphens only. Cannot be changed after creation.</div>
+          </div>
+          <div class="form-row">
+            <label>Display Name *</label>
+            <input type="text" id="f-name" placeholder="e.g. My Partner Inc." oninput="onNameInput()"/>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Primary Product ID *</label>
+            <input type="text" id="f-productId" placeholder="UUID from CBS"/>
+          </div>
+          <div class="form-row">
+            <label>Invoice Prefix</label>
+            <input type="text" id="f-invoicePrefix" placeholder="Auto-filled from name"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Additional Product IDs</label>
+          <textarea id="f-productIds" rows="2" placeholder="One UUID per line (for partners with multiple product codes)"></textarea>
+          <div class="form-hint">For partners like AIO that have multiple product UUIDs in CBS. One per line.</div>
+        </div>
+        <div class="form-row">
+          <label>Customer ID</label>
+          <input type="text" id="f-customerId" placeholder="e.g. My-Partner-Inc"/>
+        </div>
+
+        <div class="section-title">Invoice Billing Info (BILLED TO)</div>
+        <div class="form-grid">
+          <div class="form-row"><label>Contact Name</label><input type="text" id="bt-contact"/></div>
+          <div class="form-row"><label>Company</label><input type="text" id="bt-company"/></div>
+        </div>
+        <div class="form-row"><label>Address Line 1</label><input type="text" id="bt-address1"/></div>
+        <div class="form-row"><label>Address Line 2</label><input type="text" id="bt-address2"/></div>
+        <div class="form-grid">
+          <div class="form-row"><label>Country</label><input type="text" id="bt-country" value="Philippines"/></div>
+          <div class="form-row"><label>Email</label><input type="email" id="bt-email"/></div>
+        </div>
+      </div>
+
+      <!-- Fees tab -->
+      <div class="tab-panel" id="tab-fees">
+        <!-- QRPh -->
+        <div class="fee-block">
+          <h4>QRPh Fee (QR_P2M incoming)</h4>
+          <div class="form-row">
+            <label>Fee Type</label>
+            <select id="qrph-type" onchange="renderFeeFields('qrph')">
+              <option value="zero">Zero — No fee</option>
+              <option value="flat">Flat — Fixed ₱X per transaction</option>
+              <option value="pct_floor">% + Floor — max(amt × rate, floor)</option>
+              <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
+              <option value="tiered_amount">Tiered by Amount</option>
+              <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
+            </select>
+          </div>
+          <div class="fee-type-fields" id="qrph-fields"></div>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Fee Note (shown in SUMMARY sheet)</label>
+            <input type="text" id="qrph-note" placeholder="e.g. 0.7% or PHP 1 whichever is higher"/>
+          </div>
+        </div>
+
+        <!-- VCA -->
+        <div class="fee-block">
+          <h4>VCA Fee (P2P / QR_P2P incoming)</h4>
+          <div class="form-row">
+            <label>Fee Type</label>
+            <select id="vca-type" onchange="renderFeeFields('vca')">
+              <option value="zero">Zero — No fee (VCA N/A)</option>
+              <option value="flat">Flat — Fixed ₱X per transaction</option>
+              <option value="pct_floor">% + Floor — max(amt × rate, floor)</option>
+              <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
+              <option value="tiered_amount">Tiered by Amount</option>
+              <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
+            </select>
+          </div>
+          <div class="fee-type-fields" id="vca-fields"></div>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Fee Note</label>
+            <input type="text" id="vca-note" placeholder="e.g. PHP 8 per transaction"/>
+          </div>
+        </div>
+
+        <!-- Disburse -->
+        <div class="fee-block">
+          <h4>Disburse Fee (outgoing)</h4>
+          <div class="form-row">
+            <label>Fee Type</label>
+            <select id="disburse-type" onchange="renderDisburseFields()">
+              <option value="flat_rates">Flat Rates — separate interbank / intrabank</option>
+              <option value="by_amount">By Amount — fee depends on transaction amount (AIO-style)</option>
+            </select>
+          </div>
+          <div class="fee-type-fields" id="disburse-fields"></div>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Fee Note</label>
+            <input type="text" id="disburse-note" placeholder="e.g. PHP 3.5 per transaction"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detection Rules tab -->
+      <div class="tab-panel" id="tab-rules">
+
+        <!-- QRPh -->
+        <div class="fee-block">
+          <h4>QRPh — Incoming (QR_P2M)</h4>
+          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Standard criteria used to identify a QRPh transaction in the CBS file.</p>
+          <div class="rule-box">
+            <div class="rule-row"><span class="rule-key">Channel</span><span class="rule-val"><span class="rtag">INSTAPAY</span></span></div>
+            <div class="rule-row"><span class="rule-key">Transfer Mode</span><span class="rule-val"><span class="rtag">QR_P2M</span></span></div>
+            <div class="rule-row"><span class="rule-key">Status</span><span class="rule-val"><span class="rtag">SETTLED</span></span></div>
+          </div>
+          <div class="form-row">
+            <label>Notes / Remarks</label>
+            <input type="text" id="mech-qrph-note" placeholder="e.g. Standard QRPh criteria, no exceptions"/>
+          </div>
+        </div>
+
+        <!-- VCA -->
+        <div class="fee-block">
+          <h4>VCA — P2P Incoming</h4>
+          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Configure which transactions count as VCA for this partner.</p>
+          <label class="check-row" style="margin-bottom:12px;"><input type="checkbox" id="f-hasVca" onchange="toggleVcaConfig()"/> <strong>Enable VCA billing for this partner</strong></label>
+          <div id="vcaConfigWrap">
+            <div class="form-row">
+              <label>Channels that qualify as VCA</label>
+              <div style="display:flex;gap:20px;margin-top:4px;">
+                <label class="check-row"><input type="checkbox" id="vca-ch-instapay" value="INSTAPAY"/> INSTAPAY</label>
+                <label class="check-row"><input type="checkbox" id="vca-ch-pesonet" value="PESONET"/> PESONET</label>
+              </div>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <label>Transfer Modes that qualify as VCA</label>
+              <div style="display:flex;gap:20px;margin-top:4px;flex-wrap:wrap;">
+                <label class="check-row"><input type="checkbox" id="vca-tm-p2p" value="P2P"/> P2P</label>
+                <label class="check-row"><input type="checkbox" id="vca-tm-qrp2p" value="QR_P2P"/> QR_P2P</label>
+                <label class="check-row"><input type="checkbox" id="vca-tm-blank" value=""/> Blank / Empty TM</label>
+              </div>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <label class="check-row"><input type="checkbox" id="vca-requireRef"/> Transfer reference code (if alias used) must NOT be blank</label>
+            </div>
+          </div>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Notes / Remarks</label>
+            <input type="text" id="mech-vca-note" placeholder="e.g. P2P via INSTAPAY, ref code required"/>
+          </div>
+        </div>
+
+        <!-- Outgoing -->
+        <div class="fee-block">
+          <h4>Outgoing — Disburse</h4>
+          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Configure which outgoing rows are included in billing for this partner.</p>
+          <div class="form-row">
+            <label>Status Filter</label>
+            <div style="display:flex;gap:20px;margin-top:4px;">
+              <label class="check-row"><input type="radio" name="outStatusRadio" id="out-radio-settled" value="settled"/> SETTLED transactions only</label>
+              <label class="check-row"><input type="radio" name="outStatusRadio" id="out-radio-all" value="all"/> All statuses</label>
+            </div>
+          </div>
+          <label class="check-row" style="margin-top:8px;"><input type="checkbox" id="f-excludeOutgoingPesonet"/> Exclude rows where Channel = PESONET</label>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Exclude Reason Codes (comma-separated)</label>
+            <input type="text" id="f-outgoingExcludeReasons" placeholder="e.g. FF02, FF10, PAYMENT HUB GATEWAY ERROR"/>
+            <div class="form-hint">Outgoing rows with these reason codes will be excluded from billing.</div>
+          </div>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Notes / Remarks</label>
+            <input type="text" id="mech-out-note" placeholder="e.g. SETTLED only, exclude PESONET channel"/>
+          </div>
+        </div>
+
+        <!-- International vs Local -->
+        <div class="fee-block">
+          <h4>International vs Local (Disburse)</h4>
+          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">How the system determines whether an outgoing transaction is intrabank (local/Netbank) or interbank (external).</p>
+          <div class="rule-box">
+            <div class="rule-row"><span class="rule-key">Intrabank (Local)</span><span class="rule-val">Recipient bank code = <span class="rtag">CUOBPHM2XXX</span> <span style="font-size:.75rem;color:#888;">(Netbank-to-Netbank)</span></span></div>
+            <div class="rule-row"><span class="rule-key">Interbank (External)</span><span class="rule-val">All other recipient bank codes</span></div>
+          </div>
+          <div class="form-row">
+            <label>Notes / Remarks</label>
+            <input type="text" id="mech-intl-note" placeholder="e.g. Standard bank code determination, no exceptions"/>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEdit()">Cancel</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="savePartner()">Save Partner</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+let partners = [];
+let editingId = null;
+let deleteId = null;
+
+// ---- Fee field templates ----
+const FEE_TYPE_HTML = {
+  zero: '',
+  flat: `<div class="form-row"><label>Fee Amount (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="value" placeholder="e.g. 10"/></div>`,
+  pct_floor: `
+    <div class="form-grid">
+      <div class="form-row"><label>Rate (%)</label><input type="number" step="0.001" min="0" class="fee-val" data-key="pct_display" placeholder="e.g. 0.7"/><div class="form-hint">Enter as percentage, e.g. 0.7 for 0.7%</div></div>
+      <div class="form-row"><label>Floor (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="floor" placeholder="e.g. 1.00"/></div>
+    </div>`,
+  pct_floor_cap: `
+    <div class="form-grid-3">
+      <div class="form-row"><label>Rate (%)</label><input type="number" step="0.001" min="0" class="fee-val" data-key="pct_display" placeholder="e.g. 0.7"/></div>
+      <div class="form-row"><label>Floor (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="floor" placeholder="e.g. 1.00"/></div>
+      <div class="form-row"><label>Cap (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="cap" placeholder="e.g. 7.00"/></div>
+    </div>`,
+  tiered_amount: `
+    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. The last tier has no upper limit.</div>
+    <table class="tiers-table">
+      <thead><tr><th>If amount ≤ (₱)</th><th>Fee (₱)</th><th></th></tr></thead>
+      <tbody id="PFXTIERS"></tbody>
+    </table>
+    <button type="button" onclick="addTierRow('PFX')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
+    <div class="form-hint" style="margin-top:6px;">Leave "amount ≤" blank for the final (default) tier.</div>`,
+  tiered_amount_count: `
+    <div class="form-grid">
+      <div class="form-row"><label>Amount Threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="amtThreshold" placeholder="e.g. 600"/></div>
+      <div class="form-row"><label>Low Fee — if amt ≤ threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="lowFee" placeholder="e.g. 6"/></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><label>Count Threshold (txns)</label><input type="number" step="1" class="fee-val" data-key="countThreshold" placeholder="e.g. 30000"/></div>
+      <div class="form-row"><label>High Fee at Count (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFeeAtCount" placeholder="e.g. 8"/></div>
+    </div>
+    <div class="form-row"><label>High Fee — Default (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFeeDefault" placeholder="e.g. 10"/></div>`,
+};
+const DISBURSE_HTML = {
+  flat_rates: `
+    <div class="form-grid">
+      <div class="form-row"><label>Interbank (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="interbank" placeholder="e.g. 3.5"/></div>
+      <div class="form-row"><label>Intrabank (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="intrabank" placeholder="e.g. 3.5"/></div>
+    </div>`,
+  by_amount: `
+    <div class="form-grid-3">
+      <div class="form-row"><label>Amount Threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="amtThreshold" placeholder="e.g. 500"/></div>
+      <div class="form-row"><label>Fee if ≤ threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="lowFee" placeholder="e.g. 4"/></div>
+      <div class="form-row"><label>Fee if > threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFee" placeholder="e.g. 6"/></div>
+    </div>`,
+};
+
+function renderFeeFields(pfx) {
+  const type = document.getElementById(`${pfx}-type`).value;
+  let html = FEE_TYPE_HTML[type] || '';
+  html = html.replace(/PFX/g, pfx.toUpperCase());
+  document.getElementById(`${pfx}-fields`).innerHTML = html;
+}
+function renderDisburseFields() {
+  const type = document.getElementById('disburse-type').value;
+  document.getElementById('disburse-fields').innerHTML = DISBURSE_HTML[type] || '';
+}
+
+function addTierRow(pfx, maxAmt, fee) {
+  const tbody = document.getElementById(`${pfx}TIERS`);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="number" step="0.01" class="tier-max" value="${maxAmt !== undefined ? maxAmt : ''}" placeholder="(blank = last tier)"/></td>
+    <td><input type="number" step="0.01" class="tier-fee" value="${fee !== undefined ? fee : ''}" required/></td>
+    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function specToForm(pfx, spec) {
+  if (!spec) return;
+  const typeEl = document.getElementById(`${pfx}-type`);
+  typeEl.value = spec.type || 'zero';
+  renderFeeFields(pfx);
+  const wrap = document.getElementById(`${pfx}-fields`);
+  if (!wrap) return;
+  // Fill scalar fields
+  wrap.querySelectorAll('.fee-val').forEach(inp => {
+    const key = inp.dataset.key;
+    if (key === 'pct_display') {
+      inp.value = spec.pct !== undefined ? (spec.pct * 100).toFixed(3).replace(/\.?0+$/, '') : '';
+    } else if (spec[key] !== undefined) {
+      inp.value = spec[key];
+    }
+  });
+  // Fill tiers
+  if (spec.type === 'tiered_amount' && Array.isArray(spec.tiers)) {
+    const pfxUp = pfx.toUpperCase();
+    spec.tiers.forEach(t => addTierRow(pfxUp, t.maxAmt, t.fee));
+  }
+}
+
+function disbSpecToForm(spec) {
+  if (!spec) return;
+  document.getElementById('disburse-type').value = spec.type || 'flat_rates';
+  renderDisburseFields();
+  const wrap = document.getElementById('disburse-fields');
+  wrap.querySelectorAll('.fee-val').forEach(inp => {
+    const key = inp.dataset.key;
+    if (spec[key] !== undefined) inp.value = spec[key];
+  });
+}
+
+function formToSpec(pfx) {
+  const type = document.getElementById(`${pfx}-type`).value;
+  const wrap = document.getElementById(`${pfx}-fields`);
+  const spec = { type };
+  if (wrap) {
+    wrap.querySelectorAll('.fee-val').forEach(inp => {
+      const key = inp.dataset.key;
+      const v = parseFloat(inp.value);
+      if (!isNaN(v)) {
+        if (key === 'pct_display') spec.pct = Math.round(v / 100 * 1e9) / 1e9;
+        else spec[key] = v;
+      }
+    });
+    if (type === 'tiered_amount') {
+      const pfxUp = pfx.toUpperCase();
+      spec.tiers = [];
+      wrap.querySelectorAll(`#${pfxUp}TIERS tr`).forEach(tr => {
+        const maxInp = tr.querySelector('.tier-max');
+        const feeInp = tr.querySelector('.tier-fee');
+        const feeVal = parseFloat(feeInp.value);
+        if (isNaN(feeVal)) return;
+        const t = { fee: feeVal };
+        const maxVal = parseFloat(maxInp.value);
+        if (!isNaN(maxVal)) t.maxAmt = maxVal;
+        spec.tiers.push(t);
+      });
+    }
+  }
+  return spec;
+}
+
+function formToDisburseSpec() {
+  const type = document.getElementById('disburse-type').value;
+  const spec = { type };
+  document.getElementById('disburse-fields').querySelectorAll('.fee-val').forEach(inp => {
+    const key = inp.dataset.key;
+    const v = parseFloat(inp.value);
+    if (!isNaN(v)) spec[key] = v;
+  });
+  return spec;
+}
+
+// ---- Tab switching ----
+function switchTab(name) {
+  const TAB_ORDER = ['info','rules','fees'];
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', TAB_ORDER[i] === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
+}
+
+function toggleVcaConfig() {
+  const on = document.getElementById('f-hasVca').checked;
+  document.getElementById('vcaConfigWrap').style.opacity = on ? '1' : '0.4';
+  document.getElementById('vcaConfigWrap').style.pointerEvents = on ? '' : 'none';
+}
+
+// ---- Load & render table ----
+async function loadPartners() {
+  document.getElementById('tableWrap').innerHTML = '<div class="loading">Loading…</div>';
+  const r = await fetch('/admin/partners');
+  const data = await r.json();
+  if (!data.ok) { document.getElementById('tableWrap').innerHTML = `<div class="empty">Error: ${data.error}</div>`; return; }
+  partners = data.partners || [];
+  renderTable();
+}
+
+function feeSummary(fees) {
+  if (!fees) return '—';
+  const parts = [];
+  const q = fees.qrph; const v = fees.vca; const d = fees.disburse;
+  if (q) parts.push(feeSpecLabel('QRPh', q));
+  if (v && v.type !== 'zero') parts.push(feeSpecLabel('VCA', v));
+  if (d) {
+    if (d.type === 'flat_rates') parts.push(`Disb: ₱${d.interbank}/${d.intrabank}`);
+    else if (d.type === 'by_amount') parts.push(`Disb: ₱${d.lowFee}–₱${d.highFee} by amt`);
+  }
+  return parts.map(s => `<span class="fee-pill">${s}</span>`).join(' ');
+}
+
+function feeSpecLabel(label, spec) {
+  if (!spec || spec.type === 'zero') return `${label}: N/A`;
+  if (spec.type === 'flat') return `${label}: ₱${spec.value}`;
+  if (spec.type === 'pct_floor') return `${label}: ${spec.pct*100}%+₱${spec.floor}`;
+  if (spec.type === 'pct_floor_cap') return `${label}: ${spec.pct*100}%+₱${spec.floor}–₱${spec.cap}`;
+  if (spec.type === 'tiered_amount') return `${label}: tiered`;
+  if (spec.type === 'tiered_amount_count') return `${label}: ₱${spec.lowFee}/₱${spec.highFeeDefault}/₱${spec.highFeeAtCount}`;
+  return `${label}: custom`;
+}
+
+function renderTable() {
+  if (!partners.length) {
+    document.getElementById('tableWrap').innerHTML = '<div class="empty">No partners yet. Click "Add Partner" to get started.</div>';
+    return;
+  }
+  let rows = partners.map(p => `
+    <tr>
+      <td><strong>${esc(p.name)}</strong><br/><span style="color:#888;font-size:.76rem;">${esc(p.id)}</span></td>
+      <td style="font-size:.76rem;font-family:monospace;">${esc(p.productId)}</td>
+      <td>${p.hasVca ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>'}</td>
+      <td style="font-size:.78rem;">${esc(p.billedTo && p.billedTo.company || '—')}</td>
+      <td>${feeSummary(p.fees)}</td>
+      <td><div class="actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEdit('${esc(p.id)}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="openDelete('${esc(p.id)}','${esc(p.name)}')">Delete</button>
+      </div></td>
+    </tr>`).join('');
+  document.getElementById('tableWrap').innerHTML = `
+    <table>
+      <thead><tr><th>Partner</th><th>Product ID</th><th>VCA</th><th>Billing Contact</th><th>Fee Summary</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ---- Add / Edit ----
+function openAdd() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'Add Partner';
+  document.getElementById('f-id').disabled = false;
+  clearForm();
+  renderFeeFields('qrph'); renderFeeFields('vca'); renderDisburseFields();
+  switchTab('info');
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+function openEdit(id) {
+  const p = partners.find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = 'Edit Partner';
+  document.getElementById('f-id').value = p.id;
+  document.getElementById('f-id').disabled = true;
+  document.getElementById('f-name').value = p.name || '';
+  document.getElementById('f-productId').value = p.productId || '';
+  document.getElementById('f-invoicePrefix').value = p.invoicePrefix || '';
+  document.getElementById('f-customerId').value = p.customerId || '';
+  const extraIds = (p.productIds || []).filter(id2 => id2 !== p.productId);
+  document.getElementById('f-productIds').value = extraIds.join('\n');
+  // Detection Rules tab fields
+  document.getElementById('f-hasVca').checked = !!p.hasVca;
+  toggleVcaConfig();
+  // VCA config
+  const vc = p.vcaConfig || {};
+  const vcCh = vc.channels || ['INSTAPAY'];
+  const vcTm = vc.transferModes || ['P2P','QR_P2P'];
+  document.getElementById('vca-ch-instapay').checked = vcCh.includes('INSTAPAY');
+  document.getElementById('vca-ch-pesonet').checked = vcCh.includes('PESONET');
+  document.getElementById('vca-tm-p2p').checked = vcTm.includes('P2P');
+  document.getElementById('vca-tm-qrp2p').checked = vcTm.includes('QR_P2P');
+  document.getElementById('vca-tm-blank').checked = vcTm.includes('');
+  document.getElementById('vca-requireRef').checked = vc.requireRefCode !== false;
+  // Outgoing
+  document.getElementById('f-excludeOutgoingPesonet').checked = !!p.excludeOutgoingPesonet;
+  document.getElementById('f-outgoingExcludeReasons').value = (p.outgoingExcludeReasons || []).join(', ');
+  document.getElementById(p.settledOnlyOutgoing ? 'out-radio-settled' : 'out-radio-all').checked = true;
+  // Mechanics notes
+  const mn = p.mechanicsNotes || {};
+  document.getElementById('mech-qrph-note').value = mn.qrph || '';
+  document.getElementById('mech-vca-note').value = mn.vca || '';
+  document.getElementById('mech-out-note').value = mn.outgoing || '';
+  document.getElementById('mech-intl-note').value = mn.intl || '';
+  const bt = p.billedTo || {};
+  document.getElementById('bt-contact').value = bt.contact || '';
+  document.getElementById('bt-company').value = bt.company || '';
+  document.getElementById('bt-address1').value = bt.address1 || '';
+  document.getElementById('bt-address2').value = bt.address2 || '';
+  document.getElementById('bt-country').value = bt.country || 'Philippines';
+  document.getElementById('bt-email').value = bt.email || '';
+  // Fees
+  const fees = p.fees || {};
+  specToForm('qrph', fees.qrph || { type: 'zero' });
+  specToForm('vca', fees.vca || { type: 'zero' });
+  disbSpecToForm(fees.disburse || { type: 'flat_rates', interbank: 0, intrabank: 0 });
+  document.getElementById('qrph-note').value = (fees.notes && fees.notes.qrph) || '';
+  document.getElementById('vca-note').value = (fees.notes && fees.notes.vca) || '';
+  document.getElementById('disburse-note').value = (fees.notes && fees.notes.disburse) || '';
+  switchTab('info');
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+function closeEdit() { document.getElementById('editOverlay').classList.remove('open'); }
+
+function clearForm() {
+  ['f-id','f-name','f-productId','f-invoicePrefix','f-customerId','f-productIds','f-outgoingExcludeReasons',
+   'bt-contact','bt-company','bt-address1','bt-address2','bt-email','qrph-note','vca-note','disburse-note'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('bt-country').value = 'Philippines';
+  ['f-hasVca','f-excludeOutgoingPesonet','vca-ch-instapay','vca-tm-p2p','vca-tm-qrp2p','vca-requireRef'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = id === 'vca-ch-instapay' || id === 'vca-tm-p2p' || id === 'vca-tm-qrp2p' || id === 'vca-requireRef'; // default on
+  });
+  ['vca-ch-pesonet','vca-tm-blank'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  document.getElementById('out-radio-all').checked = true;
+  toggleVcaConfig();
+  ['mech-qrph-note','mech-vca-note','mech-out-note','mech-intl-note'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['qrph-type','vca-type'].forEach(id => document.getElementById(id).value = 'zero');
+  document.getElementById('disburse-type').value = 'flat_rates';
+}
+
+function onNameInput() {
+  if (editingId) return;
+  const name = document.getElementById('f-name').value;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  document.getElementById('f-id').value = slug;
+  const prefix = name.replace(/\s+/g, '');
+  document.getElementById('f-invoicePrefix').value = prefix;
+}
+
+function onIdInput() {
+  const raw = document.getElementById('f-id').value;
+  document.getElementById('f-id').value = raw.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+}
+
+async function savePartner() {
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Saving…';
+  try {
+    const productIdsRaw = document.getElementById('f-productIds').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const primaryId = document.getElementById('f-productId').value.trim();
+    const allProductIds = [primaryId, ...productIdsRaw.filter(s => s !== primaryId)].filter(Boolean);
+
+    const fees = {
+      qrph: formToSpec('qrph'),
+      vca: formToSpec('vca'),
+      disburse: formToDisburseSpec(),
+      notes: {
+        qrph: document.getElementById('qrph-note').value.trim(),
+        vca: document.getElementById('vca-note').value.trim(),
+        disburse: document.getElementById('disburse-note').value.trim(),
+      },
+    };
+
+    const body = {
+      id: document.getElementById('f-id').value.trim(),
+      name: document.getElementById('f-name').value.trim(),
+      productId: primaryId,
+      productIds: allProductIds,
+      invoicePrefix: document.getElementById('f-invoicePrefix').value.trim(),
+      customerId: document.getElementById('f-customerId').value.trim(),
+      hasVca: document.getElementById('f-hasVca').checked,
+      vcaConfig: {
+        channels: ['INSTAPAY','PESONET'].filter(ch => document.getElementById(`vca-ch-${ch.toLowerCase()}`).checked),
+        transferModes: [
+          document.getElementById('vca-tm-p2p').checked ? 'P2P' : null,
+          document.getElementById('vca-tm-qrp2p').checked ? 'QR_P2P' : null,
+          document.getElementById('vca-tm-blank').checked ? '' : null,
+        ].filter(v => v !== null),
+        requireRefCode: document.getElementById('vca-requireRef').checked,
+      },
+      settledOnlyOutgoing: document.getElementById('out-radio-settled').checked,
+      excludeOutgoingPesonet: document.getElementById('f-excludeOutgoingPesonet').checked,
+      outgoingExcludeReasons: document.getElementById('f-outgoingExcludeReasons').value.split(',').map(s => s.trim()).filter(Boolean),
+      mechanicsNotes: {
+        qrph: document.getElementById('mech-qrph-note').value.trim(),
+        vca: document.getElementById('mech-vca-note').value.trim(),
+        outgoing: document.getElementById('mech-out-note').value.trim(),
+        intl: document.getElementById('mech-intl-note').value.trim(),
+      },
+      billedTo: {
+        contact: document.getElementById('bt-contact').value.trim(),
+        company: document.getElementById('bt-company').value.trim(),
+        address1: document.getElementById('bt-address1').value.trim(),
+        address2: document.getElementById('bt-address2').value.trim(),
+        country: document.getElementById('bt-country').value.trim(),
+        email: document.getElementById('bt-email').value.trim(),
+      },
+      fees,
+    };
+
+    const method = editingId ? 'PUT' : 'POST';
+    const url = editingId ? `/admin/partners/${editingId}` : '/admin/partners';
+    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    toast('Partner saved successfully.', 'ok');
+    closeEdit();
+    await loadPartners();
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Partner';
+  }
+}
+
+// ---- Delete ----
+function openDelete(id, name) {
+  deleteId = id;
+  document.getElementById('deletePartnerName').textContent = name;
+  document.getElementById('deleteOverlay').classList.add('open');
+}
+function closeDelete() { document.getElementById('deleteOverlay').classList.remove('open'); deleteId = null; }
+
+async function doDelete() {
+  const btn = document.getElementById('confirmDeleteBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/admin/partners/${deleteId}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    toast('Partner deleted.', 'ok');
+    closeDelete();
+    await loadPartners();
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+    btn.disabled = false;
+  }
+}
+
+// ---- Toast ----
+function toast(msg, type) {
+  const wrap = document.getElementById('toasts');
+  const div = document.createElement('div');
+  div.className = `toast toast-${type}`;
+  div.textContent = msg;
+  wrap.appendChild(div);
+  setTimeout(() => div.remove(), 3800);
+}
+
+// ---- Escape HTML ----
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ---- Init ----
+loadPartners();
+renderFeeFields('qrph'); renderFeeFields('vca'); renderDisburseFields();
+
+// Close overlay on backdrop click
+['editOverlay','deleteOverlay'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) document.getElementById(id).classList.remove('open'); });
+});
+</script>
+</body>
+</html>

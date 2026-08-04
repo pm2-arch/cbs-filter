@@ -1,0 +1,78 @@
+/* =====================================================================
+   NETBANK BRAND TOKENS  —  netbank-tokens.css
+   Netbank (A Rural Bank), Inc.  ·  internal design tokens
+   Link this once, then use the var(--nb-*) tokens anywhere.
+   <link rel="stylesheet" href="/brand/netbank-tokens.css">
+
+   Colors verified from the official logo SVG (#0440AC) and the
+   netbank.ph homepage. The teal accent is approximate (from the logo's
+   colored shield variant) — confirm against the official brand guide.
+   ===================================================================== */
+
+:root {
+  /* --- Brand blue (primary) --- */
+  --nb-blue:          #0440AC;   /* canonical brand blue (logo)         */
+  --nb-blue-deep:     #06317F;   /* navy — headings, depth, dark UI     */
+  --nb-blue-pressed:  #033793;   /* button hover / pressed              */
+  --nb-blue-bright:   #1E4FB0;   /* links / interactive accents         */
+  --nb-blue-soft:     #E7EDF9;   /* light tint — active, highlights     */
+
+  /* --- Secondary accent: teal/cyan (use sparingly) --- */
+  --nb-teal:          #15B8C9;   /* approximate — verify w/ brand guide */
+  --nb-teal-soft:     #D8F2F6;
+
+  /* --- Neutrals --- */
+  --nb-bg:            #F7F8FD;   /* page background (cool off-white)    */
+  --nb-surface:       #FFFFFF;   /* cards / panels                      */
+  --nb-border:        #E1E7F0;   /* hairlines, dividers                 */
+  --nb-ink:           #1B2333;   /* primary text                        */
+  --nb-muted:         #5C6678;   /* secondary text, labels              */
+
+  /* --- Semantic (app states) --- */
+  --nb-success:       #1E9E6A;   --nb-success-soft: #E0F3EA;
+  --nb-warning:       #C9821B;   --nb-warning-soft: #FBEFD9;
+  --nb-danger:        #C23B2E;   --nb-danger-soft:  #FAE7E4;
+
+  /* --- Typography --- */
+  /* Approximation of the brand sans. Replace with the official font if
+     available. Load via Google Fonts:
+     Poppins (display) + Public Sans (body). */
+  --nb-font-display:  "Poppins", system-ui, sans-serif;
+  --nb-font-body:     "Public Sans", system-ui, sans-serif;
+  --nb-font-mono:     "IBM Plex Mono", ui-monospace, monospace;
+
+  --nb-text-xs: 12px; --nb-text-sm: 14px; --nb-text-base: 16px;
+  --nb-text-lg: 19px; --nb-text-xl: 24px; --nb-text-2xl: 32px; --nb-text-3xl: 44px;
+  --nb-weight-regular: 400; --nb-weight-medium: 500; --nb-weight-semibold: 600;
+
+  /* --- Radius / shadow / spacing --- */
+  --nb-radius-sm: 8px; --nb-radius: 12px; --nb-radius-lg: 16px; --nb-radius-pill: 999px;
+  --nb-shadow-sm: 0 1px 2px rgba(6,49,127,.08);
+  --nb-shadow:    0 10px 30px -18px rgba(6,49,127,.45);
+  --nb-space-1: 4px; --nb-space-2: 8px; --nb-space-3: 12px; --nb-space-4: 16px;
+  --nb-space-6: 24px; --nb-space-8: 32px; --nb-space-12: 48px;
+}
+
+/* --------------------------------------------------------------------
+   Optional ready-made component classes (use or ignore)
+   -------------------------------------------------------------------- */
+.nb-btn {
+  font: var(--nb-weight-semibold) var(--nb-text-sm)/1 var(--nb-font-body);
+  color: #fff; background: var(--nb-blue); border: none;
+  padding: 12px 20px; border-radius: var(--nb-radius); cursor: pointer;
+  transition: background .15s ease, transform .15s ease;
+}
+.nb-btn:hover { background: var(--nb-blue-pressed); transform: translateY(-1px); }
+.nb-btn--ghost {
+  background: transparent; color: var(--nb-blue);
+  border: 1px solid var(--nb-border);
+}
+.nb-card {
+  background: var(--nb-surface); border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg); box-shadow: var(--nb-shadow); padding: 24px;
+}
+.nb-h1 { font: var(--nb-weight-semibold) var(--nb-text-3xl)/1.1 var(--nb-font-display);
+         color: var(--nb-blue); letter-spacing: -.01em; margin: 0; }
+.nb-h2 { font: var(--nb-weight-semibold) var(--nb-text-xl)/1.2 var(--nb-font-display);
+         color: var(--nb-ink); margin: 0; }
+.nb-section--dark { background: var(--nb-blue); color: #fff; }

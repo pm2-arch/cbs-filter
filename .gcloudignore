@@ -1,0 +1,8 @@
+.gcloudignore
+.git/
+.gitignore
+node_modules/
+*.bak
+*.log
+*.zip
+.DS_Store

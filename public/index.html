@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Billing Console — Netbank</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
+<link rel="icon" type="image/png" sizes="48x48" href="/brand/favicon-48.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/brand/favicon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand/netbank-tokens.css">
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--nb-bg);
+    color:var(--nb-ink);
+    font-family:var(--nb-font-body);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .topbar{
+    background:var(--nb-blue);
+    color:#fff;
+    padding:18px 24px;
+    display:flex; align-items:center; gap:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 6px 22px -16px rgba(6,49,127,.6);
+  }
+  .topbar img{height:30px}
+  .topbar .pipe{opacity:.4; font-size:18px}
+  .topbar .title{font-family:var(--nb-font-display); font-weight:500; font-size:16px; letter-spacing:.01em}
+  .topbar .env{font:var(--nb-weight-medium) 11px/1 var(--nb-font-mono); opacity:.8;
+    border:1px solid rgba(255,255,255,.25); padding:5px 9px; border-radius:var(--nb-radius-pill)}
+  .topbar .actions{margin-left:auto; display:flex; gap:10px; align-items:center}
+  .topbar a.outlink{
+    color:#fff; opacity:.9; text-decoration:none;
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+    border:1px solid rgba(255,255,255,.35);
+    padding:7px 11px; border-radius:var(--nb-radius-pill);
+    transition:background .15s, opacity .15s;
+  }
+  .topbar a.outlink:hover{background:rgba(255,255,255,.12); opacity:1}
+  .topbar .user{
+    display:flex; align-items:center; gap:8px;
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+    color:#fff; opacity:.92;
+    padding:6px 11px; border-radius:var(--nb-radius-pill);
+    background:rgba(255,255,255,.08);
+  }
+  .topbar .user .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--nb-teal); box-shadow:0 0 0 3px rgba(21,184,201,.25);
+  }
+  .topbar button.logout{
+    appearance:none; cursor:pointer;
+    background:transparent; color:#fff; opacity:.85;
+    border:1px solid rgba(255,255,255,.35);
+    padding:7px 11px; border-radius:var(--nb-radius-pill);
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+    transition:background .15s, opacity .15s;
+  }
+  .topbar button.logout:hover{background:rgba(255,255,255,.12); opacity:1}
+
+  /* Recent runs side drawer */
+  .topbar button.drawer-toggle{
+    appearance:none; cursor:pointer;
+    background:transparent; color:#fff; opacity:.85;
+    border:1px solid rgba(255,255,255,.35);
+    padding:7px 11px; border-radius:var(--nb-radius-pill);
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+    transition:background .15s, opacity .15s;
+  }
+  .topbar button.drawer-toggle:hover{background:rgba(255,255,255,.12); opacity:1}
+  .drawer-backdrop{
+    position:fixed; inset:0; background:rgba(6,49,127,.18);
+    opacity:0; pointer-events:none; transition:opacity .25s;
+    z-index:30;
+  }
+  .drawer-backdrop.open{opacity:1; pointer-events:auto}
+  .drawer{
+    position:fixed; top:0; right:0; bottom:0;
+    width:380px; max-width:90vw;
+    background:var(--nb-surface); border-left:1px solid var(--nb-border);
+    box-shadow:-20px 0 40px -20px rgba(6,49,127,.35);
+    transform:translateX(100%); transition:transform .28s cubic-bezier(.3,.7,.2,1);
+    z-index:31; display:flex; flex-direction:column;
+  }
+  .drawer.open{transform:none}
+  .drawer-header{
+    padding:18px 20px; border-bottom:1px solid var(--nb-border);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .drawer-header h3{
+    font:var(--nb-weight-semibold) 16px/1.2 var(--nb-font-display);
+    color:var(--nb-ink); margin:0;
+  }
+  .drawer-header .meta{font:var(--nb-weight-medium) 11px/1 var(--nb-font-mono); color:var(--nb-muted)}
+  .drawer-header button.x{
+    appearance:none; cursor:pointer;
+    background:transparent; border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius-sm); padding:5px 9px;
+    font:var(--nb-weight-medium) 14px/1 var(--nb-font-body);
+    color:var(--nb-muted);
+  }
+  .drawer-header button.x:hover{color:var(--nb-ink); border-color:var(--nb-blue)}
+  .drawer-body{flex:1; overflow-y:auto; padding:12px 20px 20px}
+  .drawer-body .empty{
+    color:var(--nb-muted); font-size:13px; padding:24px 0; text-align:center;
+  }
+  .log-entry{
+    border:1px solid var(--nb-border); border-radius:var(--nb-radius);
+    padding:12px 14px; margin-bottom:10px; background:var(--nb-surface);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .log-entry:hover{border-color:var(--nb-blue-bright); box-shadow:var(--nb-shadow-sm)}
+  .log-entry .row1{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px}
+  .log-entry .dir{
+    font:var(--nb-weight-semibold) 10px/1 var(--nb-font-mono);
+    text-transform:uppercase; letter-spacing:.06em;
+    padding:4px 8px; border-radius:var(--nb-radius-pill);
+  }
+  .log-entry .dir.incoming{background:var(--nb-blue-soft); color:var(--nb-blue-deep)}
+  .log-entry .dir.outgoing{background:var(--nb-teal-soft); color:#0d6b75}
+  .log-entry .dir.vca{background:#f3e8ff; color:#6b21a8}
+  .log-entry .inv{
+    font:var(--nb-weight-semibold) 12px/1.2 var(--nb-font-mono);
+    color:var(--nb-ink);
+  }
+  .log-entry .time{
+    margin-left:auto; font:var(--nb-weight-regular) 11px/1.2 var(--nb-font-mono);
+    color:var(--nb-muted);
+  }
+  .log-entry .row2{
+    font:var(--nb-weight-regular) 12px/1.4 var(--nb-font-body); color:var(--nb-muted);
+    margin-bottom:6px;
+  }
+  .log-entry .row2 .amt{color:var(--nb-ink); font-weight:600; font-family:var(--nb-font-mono)}
+  .log-entry .links{display:flex; gap:10px; flex-wrap:wrap}
+  .log-entry .links a{
+    font:var(--nb-weight-medium) 11px/1 var(--nb-font-body);
+    color:var(--nb-blue-bright); text-decoration:none;
+    padding:5px 8px; border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius-sm);
+  }
+  .log-entry .links a:hover{border-color:var(--nb-blue-bright); background:var(--nb-blue-soft)}
+  .drawer-footer{
+    padding:12px 20px; border-top:1px solid var(--nb-border);
+    display:flex; justify-content:flex-end;
+  }
+  .drawer-footer button{
+    appearance:none; cursor:pointer; background:transparent;
+    color:var(--nb-danger); border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius-sm); padding:7px 12px;
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+  }
+  .drawer-footer button:hover{border-color:var(--nb-danger); background:var(--nb-danger-soft)}
+
+  .wrap{max-width:900px; margin:0 auto; padding:32px 24px 80px}
+  header.brand{margin-bottom:6px}
+  h1{font:var(--nb-weight-semibold) var(--nb-text-2xl)/1.15 var(--nb-font-display);
+     color:var(--nb-blue); letter-spacing:-.01em; margin:0}
+  .sub{color:var(--nb-muted); font-size:var(--nb-text-sm); margin:4px 0 28px}
+
+  .steps{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px}
+  .pill{font:var(--nb-weight-medium) var(--nb-text-xs)/1 var(--nb-font-mono);
+    color:var(--nb-muted); border:1px solid var(--nb-border);
+    padding:8px 12px; border-radius:var(--nb-radius-pill);
+    background:var(--nb-surface); display:flex; gap:8px; align-items:center}
+  .pill.active{color:var(--nb-blue); border-color:var(--nb-blue); background:var(--nb-blue-soft)}
+  .pill.done{color:var(--nb-blue-bright)}
+  .pill b{font-weight:600}
+
+  .card{
+    background:var(--nb-surface); border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius-lg); box-shadow:var(--nb-shadow-sm);
+    padding:24px 24px 22px; margin-bottom:16px;
+    opacity:0; transform:translateY(8px);
+    animation:rise .45s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  @keyframes rise{to{opacity:1; transform:none}}
+  .card h2{font:var(--nb-weight-semibold) var(--nb-text-lg)/1.2 var(--nb-font-display);
+    color:var(--nb-ink); margin:0 0 4px}
+  .card .hint{color:var(--nb-muted); font-size:var(--nb-text-sm); margin:0 0 16px}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px}
+  .opt{appearance:none; cursor:pointer; text-align:left; font:inherit; color:var(--nb-ink);
+    background:var(--nb-surface); border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius); padding:13px 14px;
+    transition:border-color .15s, background .15s, transform .15s, box-shadow .15s}
+  .opt:hover{border-color:var(--nb-blue); transform:translateY(-1px); box-shadow:var(--nb-shadow-sm)}
+  .opt.sel{border-color:var(--nb-blue); background:var(--nb-blue-soft); color:var(--nb-blue-deep)}
+  .opt small{display:block; color:var(--nb-muted);
+    font:var(--nb-weight-regular) 11px/1.4 var(--nb-font-mono); margin-top:3px}
+
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+
+  button.go{
+    appearance:none; cursor:pointer; border:none;
+    border-radius:var(--nb-radius); padding:12px 22px;
+    font:var(--nb-weight-semibold) var(--nb-text-sm)/1 var(--nb-font-body);
+    color:#fff; background:var(--nb-blue);
+    transition:background .15s, transform .15s;
+  }
+  button.go:hover{background:var(--nb-blue-pressed); transform:translateY(-1px)}
+  button.go:disabled{background:#a8b2c2; cursor:not-allowed; transform:none}
+  button.ghost{
+    appearance:none; cursor:pointer;
+    background:transparent; color:var(--nb-blue);
+    border:1px solid var(--nb-border); border-radius:var(--nb-radius);
+    padding:10px 16px; font:var(--nb-weight-medium) var(--nb-text-sm)/1 var(--nb-font-body);
+    transition:border-color .15s, color .15s;
+  }
+  button.ghost:hover{border-color:var(--nb-blue); color:var(--nb-blue-pressed)}
+
+  .stat{display:flex; gap:28px; flex-wrap:wrap; margin:6px 0 16px}
+  .stat .n{font:var(--nb-weight-semibold) 36px/1 var(--nb-font-mono); color:var(--nb-blue-deep)}
+  .stat .l{font:var(--nb-weight-medium) 11px/1.4 var(--nb-font-mono);
+    color:var(--nb-muted); text-transform:uppercase; letter-spacing:.06em; margin-top:6px}
+
+  input[type=text],input[type=number]{
+    font:inherit; padding:10px 12px; border:1px solid var(--nb-border);
+    border-radius:var(--nb-radius-sm); background:var(--nb-surface); color:var(--nb-ink); width:100%;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus{outline:none; border-color:var(--nb-blue); box-shadow:0 0 0 3px var(--nb-blue-soft)}
+  input.invalid{border-color:var(--nb-danger); background:var(--nb-danger-soft)}
+  label.fld{display:block; font:var(--nb-weight-medium) 11px/1.4 var(--nb-font-mono);
+    color:var(--nb-muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px}
+  .field-hint{font:var(--nb-weight-regular) 12px/1.4 var(--nb-font-body); color:var(--nb-muted); margin:4px 0 0}
+  .field-hint.err{color:var(--nb-danger)}
+  .billedto-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; margin-top:10px}
+  @media (max-width:560px){ .billedto-grid{grid-template-columns:1fr} }
+
+  .recon-row{display:grid; grid-template-columns:1fr 140px 36px; gap:8px; margin-bottom:8px}
+  .x{appearance:none; border:1px solid var(--nb-border); background:var(--nb-surface);
+    border-radius:var(--nb-radius-sm); cursor:pointer; font:inherit; color:var(--nb-danger)}
+  .x:hover{border-color:var(--nb-danger)}
+
+  .note{font-size:var(--nb-text-sm); padding:12px 14px; border-radius:var(--nb-radius);
+    border:1px solid var(--nb-border); background:var(--nb-surface); color:var(--nb-muted)}
+  .note.err{border-color:var(--nb-danger); color:var(--nb-danger); background:var(--nb-danger-soft)}
+  .note.ok{border-color:var(--nb-success); color:var(--nb-success); background:var(--nb-success-soft)}
+  .note.warn{border-color:var(--nb-warning); color:var(--nb-warning); background:var(--nb-warning-soft)}
+  .links a{color:var(--nb-blue-bright); font-weight:600; text-decoration:none;
+    border-bottom:1px solid var(--nb-blue-soft)}
+  .links a:hover{border-bottom-color:var(--nb-blue-bright)}
+
+  .spin{display:inline-block; width:14px; height:14px;
+    border:2px solid var(--nb-blue-soft); border-top-color:var(--nb-blue);
+    border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:7px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .muted{color:var(--nb-muted); font-size:var(--nb-text-sm)}
+  code{font-family:var(--nb-font-mono); font-size:12px;
+    background:var(--nb-blue-soft); color:var(--nb-blue-deep); padding:1px 6px; border-radius:5px}
+
+  /* Staged-runs chips (multi-direction batch) */
+  .staged-chips{display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px}
+  .staged-chip{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 11px; border-radius:var(--nb-radius-pill);
+    background:var(--nb-blue-soft); color:var(--nb-blue-deep);
+    font:var(--nb-weight-medium) 12px/1 var(--nb-font-body);
+    border:1px solid var(--nb-border);
+  }
+  .staged-chip .badge{
+    font:var(--nb-weight-semibold) 10px/1 var(--nb-font-mono);
+    letter-spacing:.06em; padding:2px 6px; border-radius:4px;
+    background:#fff; color:var(--nb-blue-deep);
+  }
+  .staged-chip .meta{color:var(--nb-muted); font-weight:400}
+  .staged-chip .x{
+    cursor:pointer; padding:0 2px; border:none; background:none;
+    color:inherit; font-size:14px; opacity:.6;
+  }
+  .staged-chip .x:hover{opacity:1; color:var(--nb-danger)}
+
+  /* ===================================================================
+     Responsive — tablet & phone
+     Desktop layout above is unchanged; these only kick in on narrow
+     viewports so the console is usable on phones and tablets.
+     =================================================================== */
+
+  /* Tablet — tighten the page gutters a little. */
+  @media (max-width: 860px){
+    .wrap{padding:26px 18px 64px}
+  }
+
+  /* Phone / small tablet — reflow the topbar and stack controls. */
+  @media (max-width: 640px){
+    /* Topbar: let it wrap; actions drop to their own full-width row. */
+    .topbar{flex-wrap:wrap; padding:12px 16px; gap:8px 10px}
+    .topbar img{height:26px}
+    .topbar .pipe{display:none}
+    .topbar .title{font-size:15px}
+    .topbar .actions{
+      order:3; width:100%; margin-left:0;
+      flex-wrap:wrap; gap:8px;
+    }
+    /* Larger tap targets for the topbar pills. */
+    .topbar a.outlink,
+    .topbar button.logout,
+    .topbar button.drawer-toggle{padding:9px 13px}
+    /* Keep a long email from blowing out the row. */
+    .topbar .user{max-width:100%}
+    .topbar #userEmail{
+      display:inline-block; max-width:150px; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap; vertical-align:-4px;
+    }
+
+    /* Page + cards: less padding, smaller headings. */
+    .wrap{padding:20px 14px 56px}
+    h1{font-size:var(--nb-text-xl)}
+    .sub{margin-bottom:22px}
+    .card{padding:18px 16px; border-radius:var(--nb-radius)}
+    .card h2{font-size:var(--nb-text-base)}
+
+    /* Stats: smaller numbers so two fit side by side. */
+    .stat{gap:22px}
+    .stat .n{font-size:30px}
+
+    /* Full-width, finger-friendly action buttons; stack rows vertically. */
+    .row{flex-direction:column; align-items:stretch}
+    button.go,button.ghost{width:100%; padding:14px 18px}
+    /* Invoice input has an inline max-width — override it on phone. */
+    #invNo{max-width:100% !important}
+
+    /* Reconciliation rows stay 3-up but with a tighter amount column. */
+    .recon-row{grid-template-columns:1fr 104px 42px; gap:6px}
+
+    /* Recent-runs drawer goes full-bleed. */
+    .drawer{width:100%; max-width:100%}
+  }
+
+  /* Very small phones — single-column option grids. */
+  @media (max-width: 380px){
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <img src="/brand/netbank-logo-white.svg" alt="Netbank">
+  <span class="pipe">|</span>
+  <span class="title">Billing Console</span>
+  <div class="actions">
+    <a class="outlink" href="/admin" target="_blank" rel="noopener">Partner Admin ↗</a>
+    <a id="outputsLink" class="outlink" href="#" target="_blank" rel="noopener" hidden>View past outputs ↗</a>
+    <button class="drawer-toggle" id="drawerToggle" type="button">Recent runs <span id="drawerCount"></span></button>
+    <span class="user" id="userChip" hidden><span class="dot"></span><span id="userEmail"></span></span>
+    <button class="logout" id="logoutBtn" hidden>Logout</button>
+  </div>
+</div>
+
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-header">
+    <div>
+      <h3>Recent runs</h3>
+      <div class="meta">Stored in this browser only</div>
+    </div>
+    <button class="x" id="drawerClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-footer">
+    <button id="drawerClear" type="button">Clear history</button>
+  </div>
+</aside>
+
+<div class="wrap">
+  <header class="brand">
+    <h1>Generate a billing report</h1>
+  </header>
+  <p class="sub">Year → Partner → Month → pick <b>one or more</b> Incoming and/or Outgoing date files
+    → run the count check → generate a billing report and invoice <b>per date</b> into the output folder.</p>
+
+  <div class="steps" id="steps"></div>
+
+  <!-- Step 1: Year -->
+  <section class="card" id="s-year">
+    <h2>1 — Select year</h2>
+    <p class="hint">Years available in the CBS Reports directory.</p>
+    <div class="grid" id="years"><span class="muted"><span class="spin"></span>Loading years…</span></div>
+  </section>
+
+  <!-- Step 2: Partner -->
+  <section class="card" id="s-partner" hidden>
+    <h2>2 — Select partner</h2>
+    <p class="hint">Each partner has its own Product ID used to filter SETTLED rows in the source CBS files.</p>
+    <div class="grid" id="partners"></div>
+  </section>
+
+  <!-- Step 3: Month -->
+  <section class="card" id="s-month" hidden>
+    <h2>3 — Select month</h2>
+    <p class="hint">Month folders in the selected year.</p>
+    <div class="grid" id="months"></div>
+  </section>
+
+  <!-- Step 4: Pick directions + single count check -->
+  <section class="card" id="s-pick" hidden>
+    <h2>4 — Pick Incoming &amp; Outgoing date files</h2>
+    <p class="hint">Tap to select <b>one or more</b> date files for either direction (each file = one date),
+      then run the count check. Tapping again de-selects. All selected files are checked in parallel.</p>
+
+    <div class="dir-block" id="vcaDirBlock" hidden style="margin-top:8px">
+      <label class="fld">VCA (P2P)</label>
+      <div id="vcaFolder" class="note" style="margin:4px 0 10px"></div>
+      <div id="vcaDateBlock" hidden>
+        <div class="grid" id="vcaDates"></div>
+      </div>
+      <div id="vcaCountBox" style="margin-top:8px"></div>
+    </div>
+
+    <div class="dir-block" style="margin-top:8px">
+      <label class="fld">Incoming Consolidated</label>
+      <div id="incomingFolder" class="note" style="margin:4px 0 10px"></div>
+      <div id="incomingDateBlock" hidden>
+        <div class="grid" id="incomingDates"></div>
+      </div>
+      <div id="incomingCountBox" style="margin-top:8px"></div>
+    </div>
+
+    <div class="dir-block" style="margin-top:18px">
+      <label class="fld">Outgoing Consolidated</label>
+      <div id="outgoingFolder" class="note" style="margin:4px 0 10px"></div>
+      <div id="outgoingDateBlock" hidden>
+        <div class="grid" id="outgoingDates"></div>
+      </div>
+      <div id="outgoingCountBox" style="margin-top:8px"></div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="go" id="btnRunCounts" disabled>Run count check</button>
+      <button class="ghost" id="btnSkipVca" hidden>Skip VCA</button>
+      <button class="ghost" id="btnSkipIncoming">Skip Incoming</button>
+      <button class="ghost" id="btnSkipOutgoing">Skip Outgoing</button>
+    </div>
+    <div style="margin-top:12px">
+      <button class="go" id="btnGenMonth" hidden style="background:var(--nb-teal,#0d7a6e)">⚡ Generate Entire Month</button>
+      <div id="monthlyGenBox" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- Step 5: Generate -->
+  <section class="card" id="s-gen" hidden>
+    <h2>5 — Reconcile &amp; generate</h2>
+    <p class="hint">Amount Due = period total − previously charged. Fill any prior charges, then generate.</p>
+
+    <label class="fld">Invoice number(s) — one per selected date</label>
+    <p class="field-hint" id="invHint">Auto-suggested sequential numbers. Edit any of them if needed.</p>
+    <div id="invByDate" style="margin-top:4px"></div>
+
+    <label class="fld" for="invCustomerId" style="margin-top:18px">Customer ID</label>
+    <input type="text" id="invCustomerId" placeholder="e.g. Magic-Payment-Inc" style="max-width:280px">
+    <p class="field-hint">Written to the invoice's <b>Customer ID</b> field. Pre-filled from the selected
+      partner — edit as needed; leave blank to omit.</p>
+
+    <label class="fld" style="margin-top:18px">Billed to (invoice)</label>
+    <p class="field-hint">Fills the invoice's <b>BILLED TO</b> block line by line. Pre-filled from the selected
+      partner — edit as needed; leave a field blank to omit that line.</p>
+    <div class="billedto-grid" id="billedTo">
+      <div>
+        <label class="fld" for="btContact">Contact name</label>
+        <input type="text" id="btContact" placeholder="e.g. Gil Benosa">
+      </div>
+      <div>
+        <label class="fld" for="btCompany">Company</label>
+        <input type="text" id="btCompany" placeholder="e.g. Magic Payment Inc.">
+      </div>
+      <div>
+        <label class="fld" for="btAddress1">Address line 1</label>
+        <input type="text" id="btAddress1" placeholder="Unit / building / street">
+      </div>
+      <div>
+        <label class="fld" for="btAddress2">Address line 2</label>
+        <input type="text" id="btAddress2" placeholder="District / city">
+      </div>
+      <div>
+        <label class="fld" for="btCountry">Country</label>
+        <input type="text" id="btCountry" placeholder="e.g. Philippines">
+      </div>
+      <div>
+        <label class="fld" for="btEmail">Email</label>
+        <input type="text" id="btEmail" placeholder="billing@partner.com">
+      </div>
+    </div>
+
+    <label class="fld" id="reconLabel" style="margin-top:18px">Previously charged (reconciliation)</label>
+    <div id="recon"></div>
+    <button class="ghost" id="addRecon" style="margin-top:6px">+ Add prior charge</button>
+    <p class="field-hint" id="reconBatchNote" style="display:none">Reconciliation (previously charged) is per-date and is skipped in multi-date batch runs.</p>
+
+    <div class="row" style="margin-top:18px">
+      <button class="go" id="btnGen">Generate report(s) + invoice(s)</button>
+    </div>
+    <div id="genBox" style="margin-top:16px"></div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (path, body) => fetch(path, {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify(body||{})
+}).then(async r => {
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+  return j;
+});
+
+// Run async tasks with a concurrency cap (mirrors Promise.allSettled output order).
+// Used to throttle batch requests so we stay under Google's per-minute API quota
+// instead of firing every date at once.
+async function runPooled(items, limit, fn){
+  const results = new Array(items.length);
+  let idx = 0;
+  async function worker(){
+    while(idx < items.length){
+      const i = idx++;
+      try { results[i] = { status:'fulfilled', value: await fn(items[i], i) }; }
+      catch(e){ results[i] = { status:'rejected', reason: e }; }
+    }
+  }
+  await Promise.all(Array.from({length: Math.max(1, Math.min(limit, items.length))}, worker));
+  return results;
+}
+
+// Small gap between batch generations so Drive writes spread out and stay under
+// Google's per-minute write quota. The user barely notices it because each finished
+// date's result is shown immediately (progressive output) while the next one runs.
+const BATCH_PAUSE_MS = 1200;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const HEADER_ROW = 13;
+const SA = "cbs-filter@onyx-drive-bridge.iam.gserviceaccount.com";
+
+// Month folders look like "April 2026", "2025 December", "March 2026" — match
+// any folder name containing a month word. Filters out "Billing", "Finance", etc.
+const MONTH_RE = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i;
+const MONTHS_ORDER_NAMES = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+
+const state = {
+  mainFolderId:null, billingParentFolderId:null, partners: [],
+  year:null,
+  partner:null,
+  yearFolders: {},    // map of year (number) → Drive folder item {id, name}
+  monthFolders: [],   // month folders for the selected year, fetched when year is picked
+  month:null,
+  // Multi-date: each direction holds an ARRAY of selected files + a per-file results map.
+  //   files:   [{id,name,...}, ...]
+  //   results: { <fileId>: {count, totalScanned, completed, name, error?} }
+  vca:      { folderId:null, folderName:null, files:[], results:{}, skipped:false },
+  incoming: { folderId:null, folderName:null, files:[], results:{}, skipped:false },
+  outgoing: { folderId:null, folderName:null, files:[], results:{}, skipped:false },
+  billedToFilledFor: null,   // partner id whose defaults are currently in the BILLED TO fields
+  invoiceByDate: {},         // { <dateKey>: "<Prefix>-NNNN" } — one invoice number per selected date (single-date mode)
+  consolidated: null,        // multi-date mode: { invoiceNumber, range:{year,startMonth,startDay,endMonth,endDay}, label }
+};
+
+// ---------- Filename → date parsing (mirrors server.js parsePeriod) ----------
+// Each CBS date file is named by its date, so we derive a sortable date key + label
+// from the filename. Used to group Incoming/Outgoing of the same date and to assign
+// one invoice number per date. Returns null if no date is found in the name.
+const INV_MONTH_LOOKUP = {
+  jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,
+  jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12
+};
+function parseFileDate(name){
+  const s = String(name||'').trim();
+  const pad = n => String(n).padStart(2,'0');
+  const mk = (y,mo,da) => ({ key:`${y}${pad(mo)}${pad(da)}`, label:`${pad(mo)}/${pad(da)}/${y}`, y, m:mo, d:da });
+  let m;
+  if((m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/)) && +m[2]>=1 && +m[2]<=12) return mk(+m[1],+m[2],+m[3]);
+  if((m = s.match(/\b(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/)) && INV_MONTH_LOOKUP[m[2].toLowerCase()]) return mk(+m[1],INV_MONTH_LOOKUP[m[2].toLowerCase()],+m[3]);
+  if((m = s.match(/([A-Za-z]+)\s+(\d{1,2})(?:\s*[-–]\s*\d{1,2})?(?:,)?\s*(\d{4})/)) && INV_MONTH_LOOKUP[m[1].toLowerCase()]) return mk(+m[3],INV_MONTH_LOOKUP[m[1].toLowerCase()],+m[2]);
+  if((m = s.match(/\b(\d{8})\b/))){
+    const d8 = m[1];
+    if(/^20\d{2}/.test(d8)){ const y=+d8.slice(0,4),mo=+d8.slice(4,6),da=+d8.slice(6,8); if(mo>=1&&mo<=12&&da>=1&&da<=31) return mk(y,mo,da); }
+    const mo=+d8.slice(0,2),da=+d8.slice(2,4),y=+d8.slice(4,8); if(mo>=1&&mo<=12&&da>=1&&da<=31&&y>=2000&&y<2100) return mk(y,mo,da);
+  }
+  if((m = s.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/)) && +m[1]>=1 && +m[1]<=12) return mk(+m[3],+m[1],+m[2]);
+  if((m = s.match(/\b(\d{1,2})-(\d{1,2})-(\d{4})\b/)) && +m[1]>=1 && +m[1]<=12) return mk(+m[3],+m[1],+m[2]);
+  if((m = s.match(/([A-Za-z]+)\s+(\d{1,2})\b/)) && INV_MONTH_LOOKUP[m[1].toLowerCase()]) return mk(new Date().getFullYear(),INV_MONTH_LOOKUP[m[1].toLowerCase()],+m[2]);
+  return null;
+}
+// dateKey for a file — parsed date if possible, else the filename itself (still groups correctly).
+function fileDateKey(f){ const d = parseFileDate(f.name); return d ? d.key : ('name:'+f.name); }
+function fileDateLabel(f){ const d = parseFileDate(f.name); return d ? d.label : f.name; }
+
+// All selected files (all directions) that passed the count check with count > 0.
+function selectedDatedFiles(){
+  const out = [];
+  ['vca','incoming','outgoing'].forEach(d => {
+    if(state[d].skipped) return;
+    state[d].files.forEach(f => {
+      const res = (state[d].results||{})[f.id];
+      if(res && res.completed && res.count > 0){
+        out.push({ d, file:f, dateKey:fileDateKey(f), label:fileDateLabel(f), count:res.count });
+      }
+    });
+  });
+  return out;
+}
+// Distinct dates among the count-checked selection, sorted ascending by key.
+function distinctDates(){
+  const map = new Map();
+  selectedDatedFiles().forEach(x => { if(!map.has(x.dateKey)) map.set(x.dateKey, { key:x.dateKey, label:x.label }); });
+  return [...map.values()].sort((a,b) => String(a.key).localeCompare(String(b.key)));
+}
+// Distinct dates with parsed y/m/d structure, ascending — for consolidated range derivation.
+function selectedDatesStructured(){
+  const map = new Map();
+  selectedDatedFiles().forEach(x => {
+    const d = parseFileDate(x.file.name);
+    if(d && !map.has(d.key)) map.set(d.key, d);
+  });
+  return [...map.values()].sort((a,b) => String(a.key).localeCompare(String(b.key)));
+}
+// Auto-derived date range (min–max of selected dates) for multi-date consolidation.
+function deriveRange(){
+  const ds = selectedDatesStructured();
+  if(ds.length < 2) return null;
+  const a = ds[0], b = ds[ds.length-1];
+  return { year:a.y, startMonth:a.m, startDay:a.d, endMonth:b.m, endDay:b.d };
+}
+// Canonical folder/period label: 6-11-14 (same month) / 6-28-7-2 (cross month).
+function canonicalRangeLabel(r){
+  return r.startMonth===r.endMonth
+    ? `${r.startMonth}-${r.startDay}-${r.endDay}`
+    : `${r.startMonth}-${r.startDay}-${r.endMonth}-${r.endDay}`;
+}
+
+// ---------- BILLED TO block (invoice) ----------
+const BILLED_TO_FIELDS = [
+  ['contact', '#btContact'], ['company', '#btCompany'],
+  ['address1', '#btAddress1'], ['address2', '#btAddress2'],
+  ['country', '#btCountry'], ['email', '#btEmail'],
+];
+// Pre-fill the BILLED TO inputs from the selected partner's defaults. Only overwrites
+// when the active partner changed (force=true also overwrites), so officer edits survive
+// re-running the count check for the same partner.
+function fillBilledTo(force){
+  if(!state.partner) return;
+  if(!force && state.billedToFilledFor === state.partner.id) return;
+  const src = state.partner.billedTo || {};
+  BILLED_TO_FIELDS.forEach(([key, sel]) => { const el = $(sel); if(el) el.value = src[key] || ''; });
+  const custEl = $('#invCustomerId');
+  if(custEl) custEl.value = state.partner.customerId || '';
+  state.billedToFilledFor = state.partner.id;
+}
+function collectBilledTo(){
+  const out = {};
+  BILLED_TO_FIELDS.forEach(([key, sel]) => { const el = $(sel); out[key] = el ? el.value.trim() : ''; });
+  return out;
+}
+
+const DRIVE_FOLDER = id => `https://drive.google.com/drive/folders/${id}`;
+
+// ---------- Recent runs (localStorage-backed) ----------
+const RECENT_KEY = 'magicpay_recent_runs';
+const RECENT_MAX = 20;
+
+function readRecent(){
+  try{ return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') || []; }
+  catch(e){ return []; }
+}
+function writeRecent(arr){
+  try{ localStorage.setItem(RECENT_KEY, JSON.stringify(arr.slice(0, RECENT_MAX))); }
+  catch(e){ /* quota — ignore */ }
+}
+function pushRecent(entry){
+  const list = readRecent();
+  list.unshift(entry);
+  writeRecent(list);
+  renderRecent();
+}
+function clearRecent(){
+  if(confirm('Clear all recent run history from this browser?')){
+    localStorage.removeItem(RECENT_KEY);
+    renderRecent();
+  }
+}
+function fmtTime(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  const opts = { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' };
+  return d.toLocaleString(undefined, opts);
+}
+function fmtMoney(n){
+  return '₱' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function renderRecent(){
+  const body = document.getElementById('drawerBody');
+  const list = readRecent();
+  const countEl = document.getElementById('drawerCount');
+  countEl.textContent = list.length ? `(${list.length})` : '';
+  if(!list.length){
+    body.innerHTML = '<div class="empty">No runs yet. Generate a report to start logging.</div>';
+    return;
+  }
+  body.innerHTML = list.map(e => {
+    const dirCls = e.direction === 'incoming' ? 'incoming' : e.direction === 'vca' ? 'vca' : 'outgoing';
+    const dirLabel = e.direction ? e.direction.toUpperCase() : '—';
+    const periodLabel = e.period || e.dateFolderName || '';
+    const counts = e.counts ? [
+      `QRPH ${e.counts.qrph||0}`,
+      `Interbank ${e.counts.interbank||0}`,
+      `Intrabank ${e.counts.intrabank||0}`,
+    ].join(' · ') : '';
+    const linksHtml = [
+      e.reportUrl ? `<a href="${e.reportUrl}" target="_blank" rel="noopener">Report</a>` : '',
+      e.invoicePdfUrl ? `<a href="${e.invoicePdfUrl}" target="_blank" rel="noopener">Invoice PDF</a>` : '',
+      e.dateFolderId ? `<a href="${DRIVE_FOLDER(e.dateFolderId)}" target="_blank" rel="noopener">Folder</a>` : '',
+    ].filter(Boolean).join('');
+    return `
+      <div class="log-entry">
+        <div class="row1">
+          <span class="dir ${dirCls}">${dirLabel}</span>
+          <span class="inv">${e.invoiceNumber||''}</span>
+          <span class="time">${fmtTime(e.timestamp)}</span>
+        </div>
+        <div class="row2">
+          ${periodLabel ? periodLabel + ' · ' : ''}<span class="amt">${fmtMoney(e.amountDue)}</span>
+          ${counts ? '<br>' + counts : ''}
+        </div>
+        <div class="links">${linksHtml}</div>
+      </div>`;
+  }).join('');
+}
+function openDrawer(){
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+  document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+  document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+}
+document.getElementById('drawerToggle').addEventListener('click', openDrawer);
+document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+document.getElementById('drawerBackdrop').addEventListener('click', closeDrawer);
+document.getElementById('drawerClear').addEventListener('click', clearRecent);
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDrawer(); });
+renderRecent();
+
+const STEPS = [
+  ["year","Year"], ["partner","Partner"], ["month","Month"], ["pick","Pick + Count"], ["gen","Generate"],
+];
+function renderSteps(active){
+  $('#steps').innerHTML = STEPS.map(([k,l],i)=>{
+    const idx = STEPS.findIndex(s=>s[0]===active);
+    const cls = k===active?'active':(i<idx?'done':'');
+    return `<span class="pill ${cls}"><b>${i+1}</b> ${l}</span>`;
+  }).join('');
+}
+function show(id){ $(id).hidden=false; $(id).style.animation='none'; void $(id).offsetWidth; $(id).style.animation=''; }
+
+function optButton(label, sub, onClick){
+  const b=document.createElement('button'); b.className='opt';
+  b.innerHTML = `${label}${sub?`<small>${sub}</small>`:''}`;
+  b.onclick=()=>{ [...b.parentElement.children].forEach(c=>c.classList.remove('sel')); b.classList.add('sel'); onClick(); };
+  return b;
+}
+function errNote(box, e){
+  const m = String(e.message||e);
+  const shared = /404|not found|permission|403/i.test(m)
+    ? `<br><span class="muted">Tip: share the file/folder with <code>${SA}</code> (Viewer/Editor).</span>` : '';
+  box.innerHTML = `<div class="note err">${m}${shared}</div>`;
+}
+
+// Sort month folders chronologically — pull out the year (4-digit) + month name.
+const MONTHS_ORDER = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+function monthSortKey(name){
+  const yearMatch = name.match(/\b(20\d{2})\b/);
+  const monthMatch = name.toLowerCase().match(MONTH_RE);
+  const year = yearMatch ? +yearMatch[1] : 0;
+  const month = monthMatch ? MONTHS_ORDER.indexOf(monthMatch[1].toLowerCase()) : -1;
+  return year * 100 + month;
+}
+
+async function init(){
+  renderSteps('year');
+  try{
+    const cfg = await fetch('/config').then(r=>r.json());
+    state.mainFolderId = cfg.mainFolderId;
+    state.billingParentFolderId = cfg.billingParentFolderId;
+    state.partners = Array.isArray(cfg.partners) ? cfg.partners : [];
+    if(state.billingParentFolderId){
+      const link = $('#outputsLink');
+      link.href = DRIVE_FOLDER(state.billingParentFolderId);
+      link.hidden = false;
+    }
+    if(cfg.user && cfg.user.email){
+      $('#userEmail').textContent = cfg.user.email;
+      $('#userChip').hidden = false;
+      $('#logoutBtn').hidden = false;
+    }
+    const { items } = await api('/list-files', { folderId: state.mainFolderId });
+    // Year folders = subfolders named with just a 4-digit year (e.g. "2026", "2025").
+    const yearItems = items.filter(i => i.isFolder && /^20\d{2}$/.test(i.name.trim()));
+    state.yearFolders = {};
+    yearItems.forEach(i => { state.yearFolders[+i.name.trim()] = i; });
+    const years = yearItems.map(i => +i.name.trim()).sort((a,b) => b - a);
+    const box = $('#years'); box.innerHTML='';
+    if(!years.length){
+      box.innerHTML = '<span class="muted">No year folders found. Check sharing with the service account.</span>';
+      return;
+    }
+    years.forEach(y => box.appendChild(optButton(String(y), null, ()=>pickYear(y))));
+  }catch(e){ errNote($('#years'), e); }
+}
+
+async function pickYear(y){
+  state.year = y;
+  state.monthFolders = [];
+  state.partner = null; state.month = null;
+  resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
+  ['#s-partner','#s-month','#s-pick','#s-gen'].forEach(x=>$(x).hidden=true);
+  renderSteps('year');
+  try{
+    const yearFolder = state.yearFolders[y];
+    if(!yearFolder) throw new Error(`No folder found for year ${y}`);
+    const { items } = await api('/list-files', { folderId: yearFolder.id });
+    state.monthFolders = items
+      .filter(i => i.isFolder && MONTH_RE.test(i.name))
+      .sort((a,b) => monthSortKey(b.name) - monthSortKey(a.name));
+  }catch(e){ errNote($('#years'), e); return; }
+  renderSteps('partner'); show('#s-partner');
+  smoothScrollTo('#s-partner');
+  const box = $('#partners'); box.innerHTML = '';
+  if(!state.partners.length){
+    box.innerHTML = '<span class="muted">No partners configured.</span>';
+    return;
+  }
+  state.partners.forEach(p => box.appendChild(optButton(p.name, p.invoicePrefix, ()=>pickPartner(p))));
+}
+
+function pickPartner(p){
+  state.partner = p;
+  state.month = null;
+  resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
+  ['#s-pick','#s-gen'].forEach(x=>$(x).hidden=true);
+  renderSteps('month'); show('#s-month');
+  smoothScrollTo('#s-month');
+  // Show only months for the picked year.
+  const monthsForYear = state.monthFolders.filter(m =>
+    new RegExp(`\\b${state.year}\\b`).test(m.name)
+  );
+  const box = $('#months'); box.innerHTML = '';
+  if(!monthsForYear.length){
+    box.innerHTML = `<span class="muted">No month folders found for ${state.year}.</span>`;
+    return;
+  }
+  monthsForYear.forEach(m => box.appendChild(optButton(m.name, null, ()=>pickMonth(m))));
+}
+
+function resetDirState(d){
+  state[d] = { folderId:null, folderName:null, files:[], results:{}, skipped:false };
+}
+
+async function pickMonth(m){
+  state.month = m;
+  resetDirState('vca');
+  resetDirState('incoming');
+  resetDirState('outgoing');
+  ['#s-gen'].forEach(x=>$(x).hidden=true);
+  renderSteps('pick');
+  show('#s-pick');
+  smoothScrollTo('#s-pick');
+
+  // Show/hide VCA block based on whether current partner has VCA billing.
+  const partnerHasVca = !!(state.partner && state.partner.hasVca);
+  $('#vcaDirBlock').hidden = !partnerHasVca;
+  $('#btnSkipVca').hidden = !partnerHasVca;
+
+  // Reset all dir UI blocks
+  ['vca','incoming','outgoing'].forEach(d => {
+    $(`#${d}Folder`).innerHTML = '<span class="muted"><span class="spin"></span>Loading folder…</span>';
+    $(`#${d}DateBlock`).hidden = true;
+    $(`#${d}CountBox`).innerHTML = '';
+  });
+  $('#btnRunCounts').disabled = true;
+
+  try{
+    const { items } = await api('/list-files', { folderId: m.id });
+    const folders = items.filter(i => i.isFolder);
+    const pickFolder = (dirRe) => {
+      const consolidated = folders.find(f => dirRe.test(f.name) && /consolidat/i.test(f.name));
+      if(consolidated) return consolidated;
+      return folders.find(f => dirRe.test(f.name) && !/_?temp\b/i.test(f.name)) || null;
+    };
+    const inc = pickFolder(/incoming/i);
+    const out = pickFolder(/outgoing/i);
+    // VCA: look for dedicated "VCA" folder; if none, fall back to the Incoming folder.
+    // Per spec, VCA records live in the same Incoming Consolidated CBS (same file, different transfer_mode filter).
+    const vcaDedicated = partnerHasVca ? pickFolder(/^vca$/i) : null;
+    const vca = partnerHasVca ? (vcaDedicated || inc) : null;
+    if(vca){ state.vca.folderId = vca.id; state.vca.folderName = vcaDedicated ? vca.name : `${vca.name} (VCA via Incoming)`; }
+    if(inc){ state.incoming.folderId = inc.id; state.incoming.folderName = inc.name; }
+    if(out){ state.outgoing.folderId = out.id; state.outgoing.folderName = out.name; }
+    const loaders = [ loadDirFiles('incoming'), loadDirFiles('outgoing') ];
+    if(partnerHasVca) loaders.unshift(loadDirFiles('vca'));
+    await Promise.all(loaders);
+    $('#btnGenMonth').hidden = false;
+  }catch(e){ errNote($('#incomingFolder'), e); }
+}
+
+async function loadDirFiles(d){
+  const folderBox = $(`#${d}Folder`);
+  const dateBlock = $(`#${d}DateBlock`);
+  const datesGrid = $(`#${d}Dates`);
+  if(!state[d].folderId){
+    folderBox.innerHTML = `<span class="muted">No ${cap(d)} Consolidated folder in this month — you can skip this direction.</span>`;
+    dateBlock.hidden = true;
+    return;
+  }
+  folderBox.innerHTML = `Folder: <b>${state[d].folderName}</b>`;
+  dateBlock.hidden = false;
+  datesGrid.innerHTML = '<span class="muted"><span class="spin"></span>Loading files…</span>';
+  try{
+    const { items } = await api('/list-files', { folderId: state[d].folderId });
+    const files = items.filter(i => !i.isFolder)
+      .sort((a,b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
+    state[d].folderFiles = files; // all files in folder, used by monthly billing
+    datesGrid.innerHTML = '';
+    if(!files.length){ datesGrid.innerHTML = '<span class="muted">No files in this folder.</span>'; return; }
+    files.forEach(f => {
+      const b = document.createElement('button');
+      b.className = 'opt';
+      b.innerHTML = f.name;
+      if(state[d].files.some(x => x.id === f.id)) b.classList.add('sel'); // restore selection on re-render
+      b.onclick = () => toggleDate(d, f, b);
+      datesGrid.appendChild(b);
+    });
+    renderDirSelectionNote(d);
+  }catch(e){ errNote(datesGrid, e); }
+}
+
+// Toggle a date file in/out of the direction's selection (multi-select).
+function toggleDate(d, f, btn){
+  const arr = state[d].files;
+  const idx = arr.findIndex(x => x.id === f.id);
+  if(idx >= 0){ arr.splice(idx, 1); btn.classList.remove('sel'); delete state[d].results[f.id]; }
+  else { arr.push(f); btn.classList.add('sel'); }
+  state[d].skipped = false;
+  renderDirSelectionNote(d);
+  // Changing the selection invalidates any prior count/generate step — force a re-check.
+  $('#s-gen').hidden = true;
+  renderSteps('pick');
+  updateRunCountsButton();
+}
+
+// Pre-count note: how many files are selected for this direction.
+function renderDirSelectionNote(d){
+  const box = $(`#${d}CountBox`);
+  if(!box) return;
+  const arr = state[d].files;
+  if(state[d].skipped){ box.innerHTML = '<div class="note">Skipped — not included in the run.</div>'; return; }
+  if(!arr.length){ box.innerHTML = ''; return; }
+  const names = arr.map(f => `<b>${f.name}</b>`).join(', ');
+  box.innerHTML = `<div class="note">${arr.length} file${arr.length>1?'s':''} selected: ${names}</div>`;
+}
+
+function skipDirection(d){
+  state[d].skipped = true;
+  state[d].files = []; state[d].results = {};
+  $(`#${d}CountBox`).innerHTML = '<div class="note">Skipped — this direction will not be included in the run.</div>';
+  // Deselect any selected pill in the date grid
+  [...$(`#${d}Dates`).children].forEach(c => c.classList && c.classList.remove('sel'));
+  $('#s-gen').hidden = true;
+  renderSteps('pick');
+  updateRunCountsButton();
+}
+
+function updateRunCountsButton(){
+  // Enable Run-counts if at least one direction has ≥1 file selected AND not skipped.
+  const ok = ['vca','incoming','outgoing'].some(d => state[d].files.length && !state[d].skipped);
+  $('#btnRunCounts').disabled = !ok;
+}
+
+async function runBothCounts(){
+  // Run /filter (count-only) for EVERY selected file across all directions, in parallel.
+  const dirs = ['vca','incoming','outgoing'].filter(d => state[d].files.length && !state[d].skipped);
+  if(!dirs.length) return;
+  const btn = $('#btnRunCounts');
+  const productCode = state.partner && state.partner.productCode;
+  if(!productCode){
+    errNote($('#incomingCountBox'), new Error('Selected partner is missing a CBS Product ID code. Refresh the page and try again.'));
+    return;
+  }
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Checking selected files…';
+  // Flatten to a list of {d, file} jobs, reset results.
+  const jobs = [];
+  dirs.forEach(d => { state[d].results = {}; state[d].files.forEach(f => jobs.push({ d, f })); });
+  // Throttle to 3 concurrent count-checks: each reads a whole source sheet (many API
+  // calls), so firing all dates at once blew past Google's per-minute read quota.
+  const settled = await runPooled(jobs, 3, (j) =>
+    api('/filter', {
+      sourceFileId: j.f.id, headerRow: HEADER_ROW,
+      filters:[ { column:'A', equals: productCode }, { column:'Status', equals: 'SETTLED' } ],
+      output:{ countOnly:true }
+    }).then(r => ({ j, r }))
+  );
+  settled.forEach((res, i) => {
+    const j = jobs[i];
+    if(res.status === 'fulfilled'){
+      const r = res.value.r;
+      state[j.d].results[j.f.id] = { count:r.count, totalScanned:r.totalScanned||0, completed:true, name:j.f.name };
+    } else {
+      state[j.d].results[j.f.id] = { count:0, completed:false, name:j.f.name, error:String((res.reason && res.reason.message) || res.reason) };
+    }
+  });
+  dirs.forEach(d => renderDirCounts(d));
+  btn.disabled = false; btn.textContent = 'Run count check';
+  // Reveal Generate step if any selected file has count > 0.
+  const anyOk = ['vca','incoming','outgoing'].some(d => Object.values(state[d].results||{}).some(x => x.completed && x.count > 0));
+  if(anyOk){
+    renderSteps('gen'); show('#s-gen');
+    smoothScrollTo('#s-gen');
+    fillBilledTo();
+    await buildInvoiceNumberInputs();
+    syncReconVisibility();
+    validateInv();
+  }
+}
+
+// Render per-file count results for a direction.
+function renderDirCounts(d){
+  const box = $(`#${d}CountBox`);
+  if(!box) return;
+  const files = state[d].files;
+  if(!files.length){ box.innerHTML = ''; return; }
+  const rows = files.map(f => {
+    const res = (state[d].results||{})[f.id] || {};
+    if(res.error) return `<div class="note err">${f.name}: ${res.error}</div>`;
+    const ok = res.count > 0;
+    return `<div class="note ${ok?'ok':'err'}" style="display:flex;justify-content:space-between;gap:12px">
+        <span>${f.name}</span>
+        <span><b>${res.count||0}</b> settled · <span class="muted">${(res.totalScanned||0).toLocaleString()} scanned</span></span>
+      </div>`;
+  }).join('');
+  box.innerHTML = rows;
+}
+
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function smoothScrollTo(sel){
+  const el = document.querySelector(sel);
+  if(el){ setTimeout(()=>el.scrollIntoView({behavior:'smooth', block:'start'}), 100); }
+}
+
+// Select all files for the entire month and run count checks.
+// Stops after count check — user clicks "Generate report(s) + invoice(s)" to proceed.
+async function runMonthlyBilling(){
+  const btn = $('#btnGenMonth');
+  const box = $('#monthlyGenBox');
+  box.innerHTML = '';
+
+  // Auto-select all folder files for each active direction.
+  ['vca','incoming','outgoing'].forEach(d => {
+    if(state[d].skipped) return;
+    const files = state[d].folderFiles || [];
+    if(!files.length) return;
+    state[d].files = [...files];
+    state[d].results = {};
+    [...($(`#${d}Dates`).children || [])].forEach(b => b.classList && b.classList.add('sel'));
+    renderDirSelectionNote(d);
+  });
+  updateRunCountsButton();
+  $('#s-gen').hidden = true;
+  renderSteps('pick');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Checking all files in month…';
+
+  await runBothCounts();
+
+  btn.disabled = false;
+  btn.textContent = '⚡ Generate Entire Month';
+}
+
+// Wire up the directional buttons
+$('#btnRunCounts').onclick    = () => runBothCounts();
+$('#btnSkipVca').onclick      = () => skipDirection('vca');
+$('#btnSkipIncoming').onclick = () => skipDirection('incoming');
+$('#btnSkipOutgoing').onclick = () => skipDirection('outgoing');
+$('#btnGenMonth').onclick     = () => runMonthlyBilling();
+
+// Build the invoice-number inputs. Single date → one input. Multiple dates →
+// consolidation mode: ONE invoice number for the whole range + an editable,
+// auto-derived billing-period label (e.g. "6-11-14").
+async function buildInvoiceNumberInputs(){
+  const wrap = $('#invByDate');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  state.invoiceByDate = {};
+  state.consolidated = null;
+  if(!state.partner) return;
+  const prefix = state.partner.invoicePrefix;
+  const dates = distinctDates();
+  if(!dates.length){ wrap.innerHTML = '<span class="muted">Run a count check to list dates.</span>'; return; }
+  // Determine the starting number from the partner's existing invoices.
+  let start = 1;
+  try{
+    const r = await fetch(`/next-invoice-number?partnerId=${encodeURIComponent(state.partner.id)}`).then(x=>x.json());
+    if(r && Number.isFinite(r.highest)) start = r.highest + 1;
+    else if(r && r.next){ const m = String(r.next).match(/(\d{1,5})$/); if(m) start = +m[1]; }
+  }catch(e){ /* silent — defaults to 1, user can edit */ }
+
+  if(dates.length === 1){
+    // Single date — one editable invoice number (legacy behavior).
+    const dt = dates[0];
+    const num = `${prefix}-${String(start).padStart(4,'0')}`;
+    state.invoiceByDate[dt.key] = num;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:6px';
+    row.innerHTML = `<span style="min-width:96px;display:inline-block;color:var(--nb-muted)">${dt.label}</span>
+      <input type="text" data-datekey="${dt.key}" value="${num}" maxlength="40" style="max-width:240px">`;
+    const inp = row.querySelector('input');
+    inp.addEventListener('input', () => { state.invoiceByDate[dt.key] = inp.value.trim(); validateInv(); });
+    wrap.appendChild(row);
+    return;
+  }
+
+  // Multiple dates — CONSOLIDATED: one folder + one report + one invoice.
+  const range = deriveRange();
+  const autoLabel = range ? canonicalRangeLabel(range) : '';
+  const num = `${prefix}-${String(start).padStart(4,'0')}`;
+  state.consolidated = { invoiceNumber: num, range, label: autoLabel };
+  wrap.innerHTML = `
+    <div class="note" style="margin-bottom:10px">Multiple dates selected — these will be <b>consolidated into one folder, one report, and one invoice</b> for the whole period.</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="min-width:120px;display:inline-block;color:var(--nb-muted)">Billing period</span>
+      <input type="text" id="rangeLabel" value="${autoLabel}" maxlength="40" style="max-width:200px">
+      <span class="muted">auto from ${dates[0].label} → ${dates[dates.length-1].label} · editable</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+      <span style="min-width:120px;display:inline-block;color:var(--nb-muted)">Invoice number</span>
+      <input type="text" id="consolidatedInv" value="${num}" maxlength="40" style="max-width:200px">
+      <span class="muted">one invoice for the whole range</span>
+    </div>`;
+  $('#rangeLabel').addEventListener('input', e => { state.consolidated.label = e.target.value.trim(); });
+  $('#consolidatedInv').addEventListener('input', e => { state.consolidated.invoiceNumber = e.target.value.trim(); validateInv(); });
+}
+
+// Reconciliation (previously charged) only makes sense for a single date. With multiple
+// dates selected, hide it and note that it's skipped in batch mode.
+function syncReconVisibility(){
+  const single = distinctDates().length === 1;
+  const lbl = $('#reconLabel'), recon = $('#recon'), add = $('#addRecon'), note = $('#reconBatchNote');
+  [lbl, recon, add].forEach(el => { if(el) el.style.display = single ? '' : 'none'; });
+  if(note) note.style.display = single ? 'none' : '';
+}
+
+// Reconciliation rows
+function reconRow(label='', amount=''){
+  const d=document.createElement('div'); d.className='recon-row';
+  d.innerHTML=`<input type="text" placeholder="e.g. May 26" value="${label}" maxlength="80">
+               <input type="number" step="0.01" min="0" placeholder="amount" value="${amount}">
+               <button class="x" type="button" aria-label="Remove">✕</button>`;
+  d.querySelector('.x').onclick=()=>d.remove();
+  return d;
+}
+$('#addRecon').onclick=()=>$('#recon').appendChild(reconRow());
+
+// Invoice number validation — uses the active partner's prefix.
+function partnerInvoiceRegex(){
+  const prefix = (state.partner && state.partner.invoicePrefix) || "Magicpayment";
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}-\\d{4}$`);
+}
+function validateInv(){
+  const re = partnerInvoiceRegex();
+  const prefix = (state.partner && state.partner.invoicePrefix) || "Magicpayment";
+  const hint = $('#invHint');
+  // Consolidated multi-date mode — validate the single invoice number + range label.
+  if(state.consolidated){
+    const v = (state.consolidated.invoiceNumber || '').trim();
+    const label = (state.consolidated.label || '').trim();
+    const numOk = re.test(v);
+    const labelOk = label.length > 0;
+    const ci = $('#consolidatedInv'); if(ci) ci.classList.toggle('invalid', v.length > 0 && !numOk);
+    const rl = $('#rangeLabel'); if(rl) rl.classList.toggle('invalid', !labelOk);
+    const ok = numOk && labelOk;
+    if(hint){
+      if(!numOk){ hint.classList.add('err'); hint.innerHTML = `Invoice number must match <code>${prefix}-NNNN</code> — e.g. <code>${prefix}-0001</code>.`; }
+      else if(!labelOk){ hint.classList.add('err'); hint.innerHTML = `Enter a billing period label (e.g. <code>6-11-14</code>).`; }
+      else { hint.classList.remove('err'); hint.innerHTML = `<span style="color:var(--nb-success)">✓</span> One consolidated invoice <code>${v}</code> for period <code>${label}</code>.`; }
+    }
+    $('#btnGen').disabled = !ok;
+    return ok;
+  }
+  const vals = Object.values(state.invoiceByDate || {});
+  // Mark individual invalid inputs.
+  document.querySelectorAll('#invByDate input').forEach(inp => {
+    const v = inp.value.trim();
+    inp.classList.toggle('invalid', v.length > 0 && !re.test(v));
+  });
+  // Duplicate check — two dates must not share an invoice number.
+  const seen = {}, dups = new Set();
+  vals.forEach(v => { if(seen[v]) dups.add(v); else seen[v] = true; });
+  const allMatch = vals.length > 0 && vals.every(v => re.test(v));
+  const ok = allMatch && dups.size === 0;
+  if(hint){
+    if(!vals.length){ hint.classList.remove('err'); hint.innerHTML = `Run a count check to list dates.`; }
+    else if(!allMatch){ hint.classList.add('err'); hint.innerHTML = `Each must match <code>${prefix}-NNNN</code> — e.g. <code>${prefix}-0001</code>.`; }
+    else if(dups.size){ hint.classList.add('err'); hint.innerHTML = `Duplicate invoice number(s): <code>${[...dups].join(', ')}</code>. Each date needs a unique number.`; }
+    else { hint.classList.remove('err'); hint.innerHTML = `<span style="color:var(--nb-success)">✓</span> ${vals.length} invoice number${vals.length>1?'s':''} ready.`; }
+  }
+  $('#btnGen').disabled = !ok;
+  return ok;
+}
+
+$('#btnGen').onclick = async ()=>{
+  if(!validateInv()){ return; }
+  const btn=$('#btnGen'); const box=$('#genBox');
+
+  // Build the run queue: every count-checked file across both directions.
+  const dated = selectedDatedFiles();
+  if (!dated.length) {
+    errNote(box, new Error('Nothing to generate — select date files and run a count check.'));
+    return;
+  }
+  const dates = distinctDates();
+  // Multiple dates → consolidated run (one folder + report + invoice).
+  if (dates.length > 1 && state.consolidated) {
+    return runConsolidated(btn, box, dated);
+  }
+  // Reconciliation only applies to a single-date run.
+  let previouslyCharged = [];
+  if (dates.length === 1) {
+    previouslyCharged = [...$('#recon').children].map(r=>{
+      const [a,b]=r.querySelectorAll('input');
+      return { label:a.value.trim().slice(0,80), amount:Math.max(0, parseFloat(b.value||'0')||0) };
+    }).filter(x=>x.label || x.amount > 0);
+  }
+  // For V5 Philippines and Topjuantech: auto-add VCA runs using Incoming files when no VCA
+  // files were explicitly selected. Per spec, VCA records live in the same Incoming CBS;
+  // the server filters by transfer_mode (P2P/QR_P2P) to split VCA from QRPH rows.
+  if (!!(state.partner?.hasVca) &&
+      !state.vca.skipped &&
+      !dated.some(x => x.d === 'vca') &&
+      dated.some(x => x.d === 'incoming')) {
+    dated.filter(x => x.d === 'incoming').forEach(x => dated.push({ ...x, d: 'vca' }));
+  }
+  // Order: by date ascending, incoming/vca before outgoing within a date (so the
+  // report/invoice for a date is created once, then merged by the second direction).
+  dated.sort((a,b) => String(a.dateKey).localeCompare(String(b.dateKey)) || (a.d === 'outgoing' ? 1 : -1));
+
+  btn.disabled = true;
+  const responses = [];
+  const prevPdfByDate = {};   // per-date PDF id tracking — never trash another date's PDF.
+  let errCount = 0;
+  box.innerHTML = '';
+  const customerId = $('#invCustomerId') ? $('#invCustomerId').value.trim() : '';
+  const billedTo = collectBilledTo();
+
+  for (let i = 0; i < dated.length; i++) {
+    const run = dated[i];
+    const invoiceNumber = state.invoiceByDate[run.dateKey];
+    btn.innerHTML = `<span class="spin"></span>Building ${run.label} · ${run.d} (${i+1}/${dated.length})…`;
+    try {
+      const r = await api('/build-billing', {
+        sourceFileId: run.file.id, headerRow: HEADER_ROW,
+        partnerId: state.partner.id,
+        year: state.year,
+        direction: run.d, period: run.file.name,
+        invoiceNumber,
+        previouslyCharged: dates.length === 1 ? previouslyCharged : [],
+        previousPdfFileIds: prevPdfByDate[run.dateKey] || [],
+        billedTo, customerId,
+      });
+      responses.push({ run, response: r });
+      if (r.invoicePdfFileId) prevPdfByDate[run.dateKey] = [r.invoicePdfFileId];
+      pushRecent({
+        timestamp: new Date().toISOString(),
+        direction: r.direction || run.d,
+        invoiceNumber: r.invoiceNumber || invoiceNumber,
+        invoiceNumberReused: !!r.invoiceNumberReused,
+        reportReused: !!r.reportReused,
+        period: run.file.name,
+        dateFolderName: r.outputFolder && r.outputFolder.dateFolderName,
+        dateFolderId: r.outputFolder && r.outputFolder.dateFolderId,
+        amountDue: r.amountDue,
+        counts: r.counts || {},
+        reportUrl: r.reportUrl,
+        invoicePdfUrl: r.invoicePdfUrl || r.invoiceUrl,
+      });
+    } catch(e) {
+      errCount++;
+      responses.push({ run, error: String(e.message || e) });
+    }
+    // Progressive output — show each date's result the moment its run finishes,
+    // with a live "Generating… x/y" header, instead of waiting for the whole batch.
+    renderBatchSummary(box, responses, dated, dates, errCount, { processed: i + 1, total: dated.length });
+    // Brief inter-run pause to keep Drive writes under the per-minute quota.
+    if (i < dated.length - 1) await sleep(BATCH_PAUSE_MS);
+  }
+
+  renderBatchSummary(box, responses, dated, dates, errCount);
+  btn.disabled = false; btn.textContent = 'Generate report(s) + invoice(s)';
+};
+
+// Consolidated multi-date run: merge every selected file into ONE report + ONE invoice
+// in a single range-named folder. At most two calls — incoming (fills QRPH) then
+// outgoing (fills DISBURSE, rebuilds the invoice with the combined total).
+async function runConsolidated(btn, box, dated){
+  const c = state.consolidated;
+  const invNo = (c.invoiceNumber || '').trim();
+  const label = (c.label || '').trim();
+  const periodRange = { ...c.range, label };
+  const vcaRaw   = dated.filter(x => x.d === 'vca').map(x => x.file.id);
+  const incoming = dated.filter(x => x.d === 'incoming').map(x => x.file.id);
+  const outgoing = dated.filter(x => x.d === 'outgoing').map(x => x.file.id);
+  // For V5/TopJuan, the CBS files contain all incoming transactions in one tab.
+  // The server filters by transfer_mode (P2P for VCA, QR_P2M for QRPH).
+  // If no separate VCA folder was uploaded, reuse the incoming file IDs.
+  const partnerHasVca = !!(state.partner && state.partner.hasVca);
+  const vca = vcaRaw.length ? vcaRaw : (partnerHasVca ? incoming : []);
+  const billedTo = collectBilledTo();
+  const customerId = $('#invCustomerId') ? $('#invCustomerId').value.trim() : '';
+  const order = [];
+  if (vca.length)      order.push({ direction: 'vca',      ids: vca });
+  if (incoming.length) order.push({ direction: 'incoming', ids: incoming });
+  if (outgoing.length) order.push({ direction: 'outgoing', ids: outgoing });
+
+  btn.disabled = true;
+  box.innerHTML = '';
+  let last = null, prevPdf = [];
+  try {
+    for (let i = 0; i < order.length; i++) {
+      const o = order[i];
+      btn.innerHTML = `<span class="spin"></span>Consolidating ${o.direction} · ${o.ids.length} file(s) (${i+1}/${order.length})…`;
+      const r = await api('/build-billing', {
+        sourceFileIds: o.ids, headerRow: HEADER_ROW,
+        partnerId: state.partner.id, year: state.year,
+        direction: o.direction, period: label || 'consolidated',
+        invoiceNumber: invNo, periodRange,
+        previouslyCharged: [],
+        previousPdfFileIds: prevPdf,
+        billedTo, customerId,
+      });
+      if (r.vca_skipped) {
+        box.innerHTML = `<div class="note"><span class="spin"></span> VCA skipped (no data) — continuing… ${i+1}/${order.length} done.</div>`;
+        if (i < order.length - 1) await sleep(BATCH_PAUSE_MS);
+        continue;
+      }
+      last = r;
+      if (r.invoicePdfFileId) prevPdf = [r.invoicePdfFileId];
+      box.innerHTML = `<div class="note"><span class="spin"></span> Consolidating… ${i+1}/${order.length} done.</div>`;
+      if (i < order.length - 1) await sleep(BATCH_PAUSE_MS);
+    }
+    const r = last;
+    pushRecent({
+      timestamp: new Date().toISOString(),
+      direction: 'consolidated',
+      invoiceNumber: r.invoiceNumber || invNo,
+      period: r.period || label,
+      dateFolderName: r.outputFolder && r.outputFolder.dateFolderName,
+      dateFolderId: r.outputFolder && r.outputFolder.dateFolderId,
+      amountDue: r.amountDue,
+      counts: r.counts || {},
+      reportUrl: r.reportUrl,
+      invoicePdfUrl: r.invoicePdfUrl || r.invoiceUrl,
+    });
+    renderConsolidatedResult(box, r);
+  } catch (e) {
+    errNote(box, e);
+  }
+  btn.disabled = false; btn.textContent = 'Generate report(s) + invoice(s)';
+}
+
+function renderConsolidatedResult(box, r){
+  const amt = (r.amountDue ?? 0).toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const folderId = r.outputFolder && r.outputFolder.dateFolderId;
+  const folderName = r.outputFolder && r.outputFolder.dateFolderName;
+  const links = [
+    r.reportUrl ? `<a href="${r.reportUrl}" target="_blank" rel="noopener">Report</a>` : '',
+    (r.invoicePdfUrl||r.invoiceUrl) ? `<a href="${r.invoicePdfUrl||r.invoiceUrl}" target="_blank" rel="noopener">Invoice PDF</a>` : '',
+    folderId ? `<a href="${DRIVE_FOLDER(folderId)}" target="_blank" rel="noopener">Folder ${folderName||''}</a>` : '',
+  ].filter(Boolean).join(' · ');
+  const counts = r.counts ? `QRPH ${r.counts.qrph||0} · Interbank ${r.counts.interbank||0} · Intrabank ${r.counts.intrabank||0}` : '';
+  const warningsNote = (Array.isArray(r.warnings) && r.warnings.length)
+    ? `<div class="note err" style="margin-top:8px">⚠ ${r.warnings.map(w=>`<b>${w.code}</b>: ${w.message}`).join('<br>')}</div>`
+    : '';
+  box.innerHTML = `<div class="note ok links">
+      ✓ Done. Consolidated <b>${r.period||''}</b> into one invoice <b>${r.invoiceNumber||''}</b>.<br>
+      Amount Due <b>₱${amt}</b>${counts ? ' &nbsp;·&nbsp; ' + counts : ''}<br>${links}
+    </div>${warningsNote}`;
+}
+
+// Summarize a batch run: one line per date (report + invoice links), plus errors/warnings.
+function renderBatchSummary(box, responses, dated, dates, errCount, progress){
+  // Group successful responses by date — keep the LAST (most-merged) per date.
+  const byDate = new Map();
+  responses.forEach(({ run, response, error }) => { if(!error && response) byDate.set(run.dateKey, { run, response }); });
+  const rows = [...byDate.values()].map(({ run, response:r }) => {
+    const amt = (r.amountDue ?? 0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+    const folderId = r.outputFolder && r.outputFolder.dateFolderId;
+    const links = [
+      r.reportUrl ? `<a href="${r.reportUrl}" target="_blank" rel="noopener">Report</a>` : '',
+      (r.invoicePdfUrl||r.invoiceUrl) ? `<a href="${r.invoicePdfUrl||r.invoiceUrl}" target="_blank" rel="noopener">Invoice PDF</a>` : '',
+      folderId ? `<a href="${DRIVE_FOLDER(folderId)}" target="_blank" rel="noopener">Folder</a>` : '',
+    ].filter(Boolean).join(' · ');
+    const reuse = r.invoiceNumberReused ? ' <span class="muted">(existing # reused)</span>' : '';
+    return `<div class="note ok links" style="margin-top:6px">
+        <b>${run.label}</b> &nbsp;·&nbsp; ${r.invoiceNumber||''}${reuse} &nbsp;·&nbsp; Amount Due <b>₱${amt}</b><br>${links}
+      </div>`;
+  }).join('');
+  const inProgress = progress && progress.processed < progress.total;
+  const head = inProgress
+    ? `<div class="note"><span class="spin"></span> Generating… ${progress.processed}/${progress.total} run(s) done · ${byDate.size} date(s) ready${errCount ? ` · ${errCount} error(s) so far` : ''}</div>`
+    : errCount
+      ? `<div class="note err">Completed with ${errCount} error(s). ${byDate.size} date(s) generated successfully.</div>`
+      : `<div class="note ok">✓ Done. Generated ${byDate.size} date(s) across ${responses.length} run(s).</div>`;
+  // De-duplicated consistency warnings.
+  const allWarnings = responses.flatMap(({ response }) => (response && Array.isArray(response.warnings)) ? response.warnings : []);
+  let warningsNote = '';
+  if (allWarnings.length) {
+    const seen = new Set();
+    const lines = allWarnings.filter(w => { const k = w.code + w.message; if(seen.has(k)) return false; seen.add(k); return true; })
+                             .map(w => `• <b>${w.code}</b>: ${w.message}`).join('<br>');
+    warningsNote = `<div class="note err" style="margin-top:8px">⚠ Consistency warning(s):<br>${lines}</div>`;
+  }
+  const errList = responses.filter(x => x.error).map(x => `• ${x.run.label} · ${x.run.d}: ${x.error}`).join('<br>');
+  const errBox = errList ? `<div class="note err" style="margin-top:8px">${errList}</div>` : '';
+  box.innerHTML = head + rows + warningsNote + errBox;
+}
+
+// Logout — clears IAP session cookie, then any next visit to / triggers a fresh Google sign-in.
+$('#logoutBtn').onclick = () => {
+  if(confirm('Logout from Billing Console?')) {
+    window.location.href = '/_gcp_iap/clear_login_cookie';
+  }
+};
+
+init();
+</script>
+</body>
+</html>

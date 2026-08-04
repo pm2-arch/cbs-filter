@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Netbank Brand Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="netbank-tokens.css">
+<style>
+  body{margin:0;background:var(--nb-bg);color:var(--nb-ink);font-family:var(--nb-font-body)}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-family:var(--nb-font-display);color:var(--nb-blue);font-size:34px;margin:0}
+  .sub{color:var(--nb-muted);margin:4px 0 36px}
+  h2{font-family:var(--nb-font-display);font-size:14px;letter-spacing:.08em;text-transform:uppercase;
+     color:var(--nb-muted);margin:36px 0 14px;border-top:1px solid var(--nb-border);padding-top:22px}
+  .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .sw{width:150px}
+  .chip{height:64px;border-radius:var(--nb-radius);border:1px solid var(--nb-border)}
+  .sw .name{font-weight:600;font-size:13px;margin-top:8px}
+  .sw .hex{font-family:var(--nb-font-mono);font-size:12px;color:var(--nb-muted)}
+  .logobox{padding:26px 28px;border-radius:var(--nb-radius-lg);border:1px solid var(--nb-border);display:flex;align-items:center;justify-content:center}
+  .logobox img{height:38px}
+  .type span{display:block}
+  .t-display{font-family:var(--nb-font-display);font-weight:600}
+  .t-body{font-family:var(--nb-font-body)}
+  .t-mono{font-family:var(--nb-font-mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Netbank Brand Kit</h1>
+  <p class="sub">Internal design tokens — Netbank (A Rural Bank), Inc.</p>
+
+  <h2>Logo</h2>
+  <div class="row">
+    <div class="logobox" style="background:var(--nb-surface)"><img src="netbank-logo-blue.svg" alt="Netbank"></div>
+    <div class="logobox nb-section--dark" style="background:var(--nb-blue)"><img src="netbank-logo-white.svg" alt="Netbank"></div>
+  </div>
+
+  <h2>Brand blue</h2>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--nb-blue)"></div><div class="name">Primary</div><div class="hex">#0440AC</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-blue-deep)"></div><div class="name">Deep / navy</div><div class="hex">#06317F</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-blue-bright)"></div><div class="name">Bright / link</div><div class="hex">#1E4FB0</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-blue-soft)"></div><div class="name">Soft tint</div><div class="hex">#E7EDF9</div></div>
+  </div>
+
+  <h2>Accent &amp; neutrals</h2>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--nb-teal)"></div><div class="name">Teal (2°, approx)</div><div class="hex">#15B8C9</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-bg)"></div><div class="name">Background</div><div class="hex">#F7F8FD</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-border)"></div><div class="name">Border</div><div class="hex">#E1E7F0</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-ink)"></div><div class="name">Ink</div><div class="hex">#1B2333</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-muted)"></div><div class="name">Muted</div><div class="hex">#5C6678</div></div>
+  </div>
+
+  <h2>Semantic</h2>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--nb-success)"></div><div class="name">Success</div><div class="hex">#1E9E6A</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-warning)"></div><div class="name">Warning</div><div class="hex">#C9821B</div></div>
+    <div class="sw"><div class="chip" style="background:var(--nb-danger)"></div><div class="name">Danger</div><div class="hex">#C23B2E</div></div>
+  </div>
+
+  <h2>Typography</h2>
+  <div class="type" style="display:flex;flex-direction:column;gap:10px">
+    <span class="t-display" style="font-size:32px;color:var(--nb-blue)">Poppins — Display / headings</span>
+    <span class="t-body" style="font-size:17px">Public Sans — body copy. Clean, neutral, finance-grade. Aa Bb Cc 1234567890</span>
+    <span class="t-mono" style="font-size:14px;color:var(--nb-muted)">IBM Plex Mono — figures, IDs, counts ₱1,471.04</span>
+  </div>
+
+  <h2>Components</h2>
+  <div class="nb-card" style="max-width:420px">
+    <div class="nb-h2" style="margin-bottom:6px">Card title</div>
+    <p style="color:var(--nb-muted);margin:0 0 16px;font-size:14px">Example surface using the tokens.</p>
+    <div class="row">
+      <button class="nb-btn">Primary</button>
+      <button class="nb-btn nb-btn--ghost">Secondary</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
