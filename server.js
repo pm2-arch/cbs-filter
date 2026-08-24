@@ -384,6 +384,39 @@ async function seedFirestoreIfEmpty() {
   console.log(`[init] Seeded ${PARTNER_SEED.length} partners.`);
 }
 
+// Default vcaConfig for partners seeded before the vcaConfig field was added.
+// Applied once on startup to any Firestore partner that has hasVca=true but no vcaConfig.
+// After patching, admin portal can override these via Detection Rules tab.
+const VCA_CONFIG_DEFAULTS = {
+  "v5-philippines": { channels: ["INSTAPAY", "PESONET"], transferModes: ["P2P", "QR_P2P", ""], requireRefCode: true },
+  "topjuantech":    { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
+  "seveninfo":      { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
+  "maxjoy":         { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
+  "aio":            { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P", ""], requireRefCode: false },
+  "vlpay":          { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
+  "justpayto":      { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
+};
+
+async function patchMissingVcaConfig() {
+  const snap = await db.collection(PARTNERS_COLLECTION).get();
+  const batch = db.batch();
+  let patchCount = 0;
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    if (data.hasVca && !data.vcaConfig) {
+      const defaultVc = VCA_CONFIG_DEFAULTS[doc.id] || {
+        channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true,
+      };
+      batch.update(doc.ref, { vcaConfig: defaultVc });
+      patchCount++;
+    }
+  }
+  if (patchCount > 0) {
+    await batch.commit();
+    console.log(`[init] Patched vcaConfig for ${patchCount} partner(s).`);
+  }
+}
+
 async function loadFromFirestore() {
   const snap = await db.collection(PARTNERS_COLLECTION).orderBy("order").get();
   return snap.docs.map(d => ({ ...d.data() }));
@@ -391,6 +424,7 @@ async function loadFromFirestore() {
 
 async function initPartners() {
   await seedFirestoreIfEmpty();
+  await patchMissingVcaConfig();
   const partners = await loadFromFirestore();
   _partners = partners;
   _feeRulesMap = {};
@@ -1981,39 +2015,28 @@ app.post("/build-billing", async (req, res) => {
       directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: "QR_P2M", caseSensitive: false });
     }
     if (partnerHasVca && direction === "vca") {
-      if (partner.id === "v5-philippines") {
-        // V5 VCA: INSTAPAY and PESONET both qualify; TM = P2P, QR_P2P, or blank.
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: ["INSTAPAY", "PESONET"], caseSensitive: false });
-        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: ["P2P", "QR_P2P", ""], caseSensitive: false });
+      // Fully data-driven: all VCA detection rules come from vcaConfig stored in Firestore.
+      // Set via Admin Portal → Detection Rules → VCA tab. No per-partner hardcoding.
+      // patchMissingVcaConfig() ensures every hasVca partner always has a vcaConfig on startup.
+      const vc = (partner.vcaConfig && typeof partner.vcaConfig === "object") ? partner.vcaConfig : {};
+      const vcChannels = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
+      const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
+      const requireRef = vc.requireRefCode !== false;
+
+      if (vcChannels.length === 1) {
+        directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: vcChannels[0], caseSensitive: false });
+      } else {
+        directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: vcChannels, caseSensitive: false });
+      }
+      if (vcTm.length > 0) {
+        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: vcTm, caseSensitive: false });
+      }
+      if (requireRef) {
         directionFilters.push({
           column: "Transfer reference code (if alias used)",
           altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
           notEquals: "", caseSensitive: false,
         });
-      } else {
-        // Use vcaConfig from admin portal (Detection Rules tab) if available.
-        // Falls back to TopJuantech-style defaults (INSTAPAY, P2P/QR_P2P, requireRefCode=true)
-        // for partners that have not been configured via admin, preserving backward compat.
-        const vc = (partner.vcaConfig && typeof partner.vcaConfig === "object") ? partner.vcaConfig : {};
-        const vcChannels = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
-        const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
-        const requireRef = vc.requireRefCode !== false;
-
-        if (vcChannels.length === 1) {
-          directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: vcChannels[0], caseSensitive: false });
-        } else {
-          directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: vcChannels, caseSensitive: false });
-        }
-        if (vcTm.length > 0) {
-          directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: vcTm, caseSensitive: false });
-        }
-        if (requireRef) {
-          directionFilters.push({
-            column: "Transfer reference code (if alias used)",
-            altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
-            notEquals: "", caseSensitive: false,
-          });
-        }
       }
     }
     let sourceHeader = null;
