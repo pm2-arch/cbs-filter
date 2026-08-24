@@ -2088,6 +2088,43 @@ app.post("/build-billing", async (req, res) => {
     // Returning early leaves stale VCA data in the SUMMARY from a previous run.
     // Instead, let VCA continue through to the SUMMARY write stage so it writes 0s.
     const vcaSkipped = (direction === "vca" && matches.length === 0);
+
+    // When VCA matches 0 rows, run a diagnostic to identify which filter is the culprit.
+    // One extra file read (product-code filter only), then all subsequent counts are in-memory.
+    let vcaDiagnostics = null;
+    if (vcaSkipped && fileIds.length > 0) {
+      try {
+        const rawScan = await getMatchedRows({ sourceFileId: fileIds[0], headerRow, filters: [directionFilters[0]] });
+        const h = rawScan.header;
+        const rawRows = rawScan.matches;
+        const stIdx = h.findIndex(x => /^status$/i.test(String(x||'').trim()));
+        const chIdx = h.findIndex(x => /^channel$/i.test(String(x||'').trim()));
+        const tmIdx = h.findIndex(x => /transfer[\s_]*mode/i.test(String(x||'')));
+        const refIdx = h.findIndex(x => /transfer[\s_]*ref/i.test(String(x||'')));
+        const settled = stIdx >= 0 ? rawRows.filter(r => String(r[stIdx]||'').trim().toLowerCase() === 'settled') : rawRows;
+        const channelOK = chIdx >= 0 ? settled.filter(r => String(r[chIdx]||'').trim().toLowerCase() === 'instapay') : settled;
+        const tmOK = tmIdx >= 0 ? channelOK.filter(r => ['p2p','qr_p2p'].includes(String(r[tmIdx]||'').trim().toLowerCase())) : channelOK;
+        const refOK = refIdx >= 0 ? tmOK.filter(r => String(r[refIdx]||'').trim() !== '') : tmOK;
+        const uniqTm = tmIdx >= 0 ? [...new Set(settled.map(r => String(r[tmIdx]||'').trim()))].sort() : null;
+        const uniqCh = chIdx >= 0 ? [...new Set(settled.map(r => String(r[chIdx]||'').trim()))].sort() : null;
+        vcaDiagnostics = {
+          totalAIORows: rawRows.length,
+          afterSettled: settled.length,
+          afterChannel: channelOK.length,
+          afterTransferMode: tmOK.length,
+          afterRefCode: refOK.length,
+          uniqueTransferModes: uniqTm,
+          uniqueChannels: uniqCh,
+          blankRefCodes: refIdx >= 0 ? tmOK.filter(r => String(r[refIdx]||'').trim() === '').length : null,
+          colIndices: { status: stIdx, channel: chIdx, transferMode: tmIdx, refCode: refIdx },
+        };
+        console.log(`[VCA DIAG partner=${partner.id}] ${JSON.stringify(vcaDiagnostics)}`);
+      } catch (diagErr) {
+        console.warn('[VCA DIAG] diagnostic failed:', diagErr.message);
+        vcaDiagnostics = { error: diagErr.message };
+      }
+    }
+
     if (matches.length === 0 && !vcaSkipped) {
       return res.status(400).json({
         error: "no_matches",
@@ -2778,6 +2815,7 @@ app.post("/build-billing", async (req, res) => {
         branchWritten: !!(branchCells.branchRow || branchCells.branchNameRow),
       },
       vca_skipped: vcaSkipped || false,
+      vca_diagnostics: vcaDiagnostics,
       billedTo,
       billedToWritten: true,
       customerId,

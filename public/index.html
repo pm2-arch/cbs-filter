@@ -1427,9 +1427,32 @@ function renderBatchSummary(box, responses, dated, dates, errCount, progress){
                              .map(w => `• <b>${w.code}</b>: ${w.message}`).join('<br>');
     warningsNote = `<div class="note err" style="margin-top:8px">⚠ Consistency warning(s):<br>${lines}</div>`;
   }
+  // VCA diagnostic — show which filter blocked all rows when VCA = 0.
+  const vcaDiagRaw = responses.find(({response}) => response && response.vca_skipped && response.vca_diagnostics);
+  let vcaDiagNote = '';
+  if (vcaDiagRaw) {
+    const d = vcaDiagRaw.response.vca_diagnostics;
+    if (d && d.error) {
+      vcaDiagNote = `<div class="note err" style="margin-top:8px">ℹ VCA = 0 (diagnostic unavailable: ${d.error})</div>`;
+    } else if (d) {
+      const culprit = d.totalAIORows === 0
+        ? 'No matching product-code rows in the uploaded file — check product IDs or uploaded wrong file'
+        : d.afterSettled === 0
+          ? 'No SETTLED rows among AIO transactions — check file or date range'
+          : d.afterChannel === 0
+            ? `No INSTAPAY channel rows. Channels found: ${JSON.stringify(d.uniqueChannels)}`
+            : d.afterTransferMode === 0
+              ? `No P2P / QR_P2P transfer mode rows. Modes found: ${JSON.stringify(d.uniqueTransferModes)}`
+              : d.afterRefCode === 0
+                ? `All ${d.afterTransferMode} P2P row(s) have a blank Transfer Reference Code — set requireRefCode=false in VCA Config (Admin Portal) to include them`
+                : 'Filter passed but still 0 — contact support';
+      vcaDiagNote = `<div class="note err" style="margin-top:8px">ℹ <b>VCA = 0 reason:</b> ${culprit}<br>
+        <small style="opacity:.8">Filter trace → AIO rows: ${d.totalAIORows} → SETTLED: ${d.afterSettled} → INSTAPAY: ${d.afterChannel} → P2P/QR_P2P: ${d.afterTransferMode} → non-blank ref: ${d.afterRefCode}</small></div>`;
+    }
+  }
   const errList = responses.filter(x => x.error).map(x => `• ${x.run.label} · ${x.run.d}: ${x.error}`).join('<br>');
   const errBox = errList ? `<div class="note err" style="margin-top:8px">${errList}</div>` : '';
-  box.innerHTML = head + rows + warningsNote + errBox;
+  box.innerHTML = head + rows + warningsNote + vcaDiagNote + errBox;
 }
 
 // Logout — clears IAP session cookie, then any next visit to / triggers a fresh Google sign-in.
