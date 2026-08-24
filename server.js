@@ -1947,8 +1947,14 @@ app.post("/build-billing", async (req, res) => {
     // Build filters for this direction.
     // QRPH and VCA count only SETTLED inward transactions.
     // DISBURSE (outgoing): by default bills every attempt; v5-philippines requires SETTLED only per billing spec.
+    // For partners with multiple product IDs (e.g. AIO), column A must match ANY of them.
+    const allProductCodes = (Array.isArray(partner.productIds) && partner.productIds.length > 1)
+      ? partner.productIds.map(pid => `(Prod)${pid}`)
+      : [code];
     const directionFilters = [
-      { column: "A", altColumns: ["branch_id"], equals: code },
+      allProductCodes.length > 1
+        ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
+        : { column: "A", altColumns: ["branch_id"], equals: code },
     ];
     if (direction !== "outgoing") {
       directionFilters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
@@ -1979,18 +1985,36 @@ app.post("/build-billing", async (req, res) => {
         // V5 VCA: INSTAPAY and PESONET both qualify; TM = P2P, QR_P2P, or blank.
         directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: ["INSTAPAY", "PESONET"], caseSensitive: false });
         directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: ["P2P", "QR_P2P", ""], caseSensitive: false });
+        directionFilters.push({
+          column: "Transfer reference code (if alias used)",
+          altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
+          notEquals: "", caseSensitive: false,
+        });
       } else {
-        // TopJuantech VCA (and any future partnerHasVca): INSTAPAY only, TM = P2P or QR_P2P only.
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: "INSTAPAY", caseSensitive: false });
-        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: ["P2P", "QR_P2P"], caseSensitive: false });
+        // Use vcaConfig from admin portal (Detection Rules tab) if available.
+        // Falls back to TopJuantech-style defaults (INSTAPAY, P2P/QR_P2P, requireRefCode=true)
+        // for partners that have not been configured via admin, preserving backward compat.
+        const vc = (partner.vcaConfig && typeof partner.vcaConfig === "object") ? partner.vcaConfig : {};
+        const vcChannels = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
+        const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
+        const requireRef = vc.requireRefCode !== false;
+
+        if (vcChannels.length === 1) {
+          directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: vcChannels[0], caseSensitive: false });
+        } else {
+          directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: vcChannels, caseSensitive: false });
+        }
+        if (vcTm.length > 0) {
+          directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: vcTm, caseSensitive: false });
+        }
+        if (requireRef) {
+          directionFilters.push({
+            column: "Transfer reference code (if alias used)",
+            altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
+            notEquals: "", caseSensitive: false,
+          });
+        }
       }
-      // Both V5 and TopJuantech: ref code must be present (blank = not billed).
-      directionFilters.push({
-        column: "Transfer reference code (if alias used)",
-        altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
-        notEquals: "",
-        caseSensitive: false,
-      });
     }
     let sourceHeader = null;
     let matches = [];
