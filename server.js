@@ -1602,10 +1602,11 @@ app.get("/health", (_req, res) => {
 // ---------------------------------------------------------------------------
 // Web app endpoints (no auth — browser wizard. IAP will gate in Phase D.)
 // ---------------------------------------------------------------------------
-app.get("/config", (req, res) => {
+app.get("/config", async (req, res) => {
   // IAP sets X-Goog-Authenticated-User-Email like "accounts.google.com:user@netbank.ph"
   const rawEmail = String(req.headers["x-goog-authenticated-user-email"] || "");
   const email = rawEmail.replace(/^accounts\.google\.com:/, "") || null;
+  await refreshPartners().catch(() => {});
   const partnerList = _partners || PARTNERS;
   res.json({
     mainFolderId: CBS_MAIN_FOLDER_ID,
@@ -1818,6 +1819,9 @@ app.get("/next-invoice-number", async (req, res) => {
 app.post("/build-billing", async (req, res) => {
   let stage = "validating input";
   try {
+    // Always reload partners from Firestore before billing — ensures admin changes
+    // take effect immediately regardless of which Cloud Run instance handles the request.
+    await refreshPartners().catch(() => {});
     const {
       sourceFileId,
       sourceFileIds,        // new: array of source files to merge into ONE consolidated report
