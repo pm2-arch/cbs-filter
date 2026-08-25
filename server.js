@@ -2084,6 +2084,17 @@ app.post("/build-billing", async (req, res) => {
       matches = matches.concat(m.matches);
     }
 
+    // After all files processed: log which product codes appear across ALL matched outgoing rows.
+    if (direction === "outgoing" && allProductCodes.length > 1) {
+      const colAAllUniq = [...new Set(matches.map(r => String(r[0]||'').trim()))].sort();
+      console.log(`[DISBURSE DIAG partner=${partner.id}] TOTAL matched across all files: ${matches.length}`);
+      console.log(`[DISBURSE DIAG] expected product codes: ${JSON.stringify(allProductCodes)}`);
+      console.log(`[DISBURSE DIAG] product codes in matched rows: ${JSON.stringify(colAAllUniq)}`);
+      const missing = allProductCodes.filter(pc => !colAAllUniq.includes(pc));
+      if (missing.length > 0) console.log(`[DISBURSE DIAG] NOT FOUND in CBS file: ${JSON.stringify(missing)}`);
+      else console.log(`[DISBURSE DIAG] All expected product codes found in matched rows.`);
+    }
+
     // Track VCA-skipped state — do NOT early-return for VCA with 0 rows.
     // Returning early leaves stale VCA data in the SUMMARY from a previous run.
     // Instead, let VCA continue through to the SUMMARY write stage so it writes 0s.
