@@ -1248,9 +1248,11 @@ $('#btnGen').onclick = async ()=>{
       dated.some(x => x.d === 'incoming')) {
     dated.filter(x => x.d === 'incoming').forEach(x => dated.push({ ...x, d: 'vca' }));
   }
-  // Order: by date ascending, incoming/vca before outgoing within a date (so the
-  // report/invoice for a date is created once, then merged by the second direction).
-  dated.sort((a,b) => String(a.dateKey).localeCompare(String(b.dateKey)) || (a.d === 'outgoing' ? 1 : -1));
+  // Order: by date ascending; within each date: incoming first, then vca, then outgoing.
+  // Incoming must run before VCA because the server's initBlankSummary fires on 'incoming'
+  // and would wipe VCA data if VCA ran first and created the report.
+  const _dirRank = d => d === 'incoming' ? 0 : d === 'vca' ? 1 : 2;
+  dated.sort((a,b) => String(a.dateKey).localeCompare(String(b.dateKey)) || _dirRank(a.d) - _dirRank(b.d));
 
   btn.disabled = true;
   const responses = [];
@@ -1324,9 +1326,11 @@ async function runConsolidated(btn, box, dated){
   const vca = vcaRaw.length ? vcaRaw : (partnerHasVca ? incoming : []);
   const billedTo = collectBilledTo();
   const customerId = $('#invCustomerId') ? $('#invCustomerId').value.trim() : '';
+  // Incoming must run FIRST so initBlankSummary (server-side) fires on a clean sheet.
+  // VCA runs second (same files, different filter), outgoing runs last.
   const order = [];
-  if (vca.length)      order.push({ direction: 'vca',      ids: vca });
   if (incoming.length) order.push({ direction: 'incoming', ids: incoming });
+  if (vca.length)      order.push({ direction: 'vca',      ids: vca });
   if (outgoing.length) order.push({ direction: 'outgoing', ids: outgoing });
 
   btn.disabled = true;

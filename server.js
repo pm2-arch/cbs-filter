@@ -2239,10 +2239,24 @@ app.post("/build-billing", async (req, res) => {
       reportFileId = existingReportSheet.id;
       reportReused = true;
       // Re-initialize SUMMARY on incoming so legacy reports (created before VCA was added)
-      // gain VCA rows in the structure. Safe to call here: incoming always runs first,
-      // no direction data has been written yet, and sub-period rows are beyond row 25.
+      // gain VCA rows in the structure. Guard: skip if VCA already ran first and wrote
+      // data (which would be wiped by a reinit). VCA-first ordering is a UI bug that is
+      // now fixed, but this server guard is a belt-and-suspenders fallback.
       if (direction === 'incoming') {
-        await initBlankSummary(sheets, reportFileId);
+        let vcaAlreadyRan = false;
+        try {
+          const vcaCheck = await sheets.spreadsheets.values.get({
+            spreadsheetId: reportFileId,
+            range: "VCA!A2",
+            valueRenderOption: "UNFORMATTED_VALUE",
+          });
+          vcaAlreadyRan = !!(vcaCheck.data.values && vcaCheck.data.values.length > 0);
+        } catch (_) { /* VCA tab absent — treat as not yet run */ }
+        if (!vcaAlreadyRan) {
+          await initBlankSummary(sheets, reportFileId);
+        } else {
+          console.log("[SUMMARY] VCA already ran — skipping initBlankSummary to preserve VCA data.");
+        }
       }
     } else {
       stage = "creating blank billing report";
