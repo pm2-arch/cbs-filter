@@ -615,22 +615,20 @@ async function readSourceRows(drive, sheets, fileId, sheetName) {
   return { ...result, sourceName: meta.data.name };
 }
 
-async function readNativeSheet(sheets, fileId, sheetName) {
-  const meta = await withRetry(
-    () => sheets.spreadsheets.get({ spreadsheetId: fileId }),
-    { label: "reading source sheet metadata" }
-  );
-  const tabs = meta.data.sheets.map((s) => s.properties);
-  const target = sheetName ? tabs.find((p) => p.title === sheetName) : tabs[0];
-  if (!target) return { rows: [], sheetTitle: sheetName || "" }; // tab absent — caller decides whether to error
+// Detects CBS-like data tabs by checking for known header keywords in the first 5 rows.
+const CBS_HEADER_RE = /^(status|amount|cbs_amount_outward|cbs_amount_inward|receiving branch name|sending branch name|branch_id|reference number|provider_reference_no|channel|transfer_mode)$/i;
+function hasCbsHeaders(rows) {
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    if ((rows[i] || []).some(h => CBS_HEADER_RE.test(String(h ?? '').trim()))) return true;
+  }
+  return false;
+}
 
-  const title = target.title;
-  const rowCount = target.gridProperties.rowCount;
-  const colCount = target.gridProperties.columnCount;
+async function readSingleTab(sheets, fileId, tabProps) {
+  const title = tabProps.title;
+  const rowCount = tabProps.gridProperties.rowCount;
+  const colCount = tabProps.gridProperties.columnCount;
   const lastCol = colIndexToLetter(colCount - 1);
-
-  // Larger page = fewer Sheets read calls per source = less per-minute quota pressure.
-  // Each read is retried (429/quota/5xx) so a transient spike never fails the whole scan.
   const BATCH = 50000;
   const rows = [];
   for (let start = 1; start <= rowCount; start += BATCH) {
@@ -641,21 +639,77 @@ async function readNativeSheet(sheets, fileId, sheetName) {
       range,
       valueRenderOption: "UNFORMATTED_VALUE",
       majorDimension: "ROWS",
-    }), { label: `reading source rows ${start}-${end}` });
+    }), { label: `reading tab "${title}" rows ${start}-${end}` });
     const values = resp.data.values || [];
     rows.push(...values);
     if (values.length === 0) break;
   }
-  return { rows, sheetTitle: title };
+  return rows;
+}
+
+async function readNativeSheet(sheets, fileId, sheetName) {
+  const meta = await withRetry(
+    () => sheets.spreadsheets.get({ spreadsheetId: fileId }),
+    { label: "reading source sheet metadata" }
+  );
+  const tabs = meta.data.sheets.map((s) => s.properties);
+
+  // If a specific tab name is requested, use it exclusively.
+  if (sheetName) {
+    const target = tabs.find((p) => p.title === sheetName);
+    if (!target) return { rows: [], sheetTitle: sheetName };
+    const rows = await readSingleTab(sheets, fileId, target);
+    return { rows, sheetTitle: target.title };
+  }
+
+  // No tab specified: scan ALL tabs and combine any that look like CBS data.
+  // This handles CBS exports where data is on a non-first tab (e.g. tabs named by date like "8232026").
+  const cbsTabs = [];
+  for (const tab of tabs) {
+    if (tab.gridProperties.rowCount < 2) continue;
+    const rows = await readSingleTab(sheets, fileId, tab);
+    if (hasCbsHeaders(rows)) cbsTabs.push({ title: tab.title, rows });
+  }
+
+  if (cbsTabs.length === 0) {
+    // No CBS-looking tab found — fall back to first tab as before.
+    const rows = await readSingleTab(sheets, fileId, tabs[0]);
+    return { rows, sheetTitle: tabs[0].title };
+  }
+  if (cbsTabs.length === 1) {
+    return { rows: cbsTabs[0].rows, sheetTitle: cbsTabs[0].title };
+  }
+  // Multiple CBS tabs (e.g. one tab per date): combine them.
+  // All tabs share the same header; keep header from first tab, append data rows from rest.
+  console.log(`[readNativeSheet] combining ${cbsTabs.length} CBS tabs: ${cbsTabs.map(t => t.title).join(', ')}`);
+  const header = cbsTabs[0].rows[0];
+  const combined = [header];
+  for (const { rows } of cbsTabs) combined.push(...rows.slice(1));
+  return { rows: combined, sheetTitle: cbsTabs.map(t => t.title).join('+') };
 }
 
 function parseExcelBuffer(buffer, sheetName) {
   const wb = XLSX.read(buffer, { type: "buffer" });
-  const targetName = sheetName || wb.SheetNames[0];
-  const sheet = wb.Sheets[targetName];
-  if (!sheet) throw new Error(`Sheet "${targetName}" not found in workbook`);
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-  return { rows, sheetTitle: targetName };
+  if (sheetName) {
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet) throw new Error(`Sheet "${sheetName}" not found in workbook`);
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    return { rows, sheetTitle: sheetName };
+  }
+  // No tab specified: scan all tabs for CBS-like headers, combine matching ones.
+  const cbsSheets = wb.SheetNames
+    .map(name => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" }) }))
+    .filter(({ rows }) => hasCbsHeaders(rows));
+  if (cbsSheets.length === 0) {
+    const name = wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" });
+    return { rows, sheetTitle: name };
+  }
+  if (cbsSheets.length === 1) return { rows: cbsSheets[0].rows, sheetTitle: cbsSheets[0].name };
+  console.log(`[parseExcelBuffer] combining ${cbsSheets.length} CBS sheets: ${cbsSheets.map(s => s.name).join(', ')}`);
+  const header = cbsSheets[0].rows[0];
+  const combined = [header, ...cbsSheets.flatMap(({ rows }) => rows.slice(1))];
+  return { rows: combined, sheetTitle: cbsSheets.map(s => s.name).join('+') };
 }
 
 // ---------------------------------------------------------------------------
