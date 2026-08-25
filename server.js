@@ -2565,7 +2565,7 @@ app.post("/build-billing", async (req, res) => {
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow}`, values: [[disburseFee]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow + 1}`, values: [[matches.length]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow + 2}`, values: [[disburseVolume]] });
-        sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`, values: [[rules.disburse.interbank]] });
+        sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`, values: [[rules.disburseNote || rules.disburse.interbank]] });
       }
       // Store interbank/intrabank counts so pdfkit invoice can split the disburse line
       if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[interbankCount]] });
