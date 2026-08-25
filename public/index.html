@@ -989,11 +989,15 @@ async function runBothCounts(){
   const dirs = ['vca','incoming','outgoing'].filter(d => state[d].files.length && !state[d].skipped);
   if(!dirs.length) return;
   const btn = $('#btnRunCounts');
-  const productCode = state.partner && state.partner.productCode;
-  if(!productCode){
+  const productCodes = state.partner && state.partner.productCodes;
+  if(!productCodes || !productCodes.length){
     errNote($('#incomingCountBox'), new Error('Selected partner is missing a CBS Product ID code. Refresh the page and try again.'));
     return;
   }
+  // Build column-A filter: single-ID partners use equals, multi-ID partners use includeValues.
+  const colAFilter = productCodes.length === 1
+    ? { column:'A', equals: productCodes[0] }
+    : { column:'A', includeValues: productCodes };
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Checking selected files…';
   // Flatten to a list of {d, file} jobs, reset results.
   const jobs = [];
@@ -1003,7 +1007,7 @@ async function runBothCounts(){
   const settled = await runPooled(jobs, 3, (j) =>
     api('/filter', {
       sourceFileId: j.f.id, headerRow: HEADER_ROW,
-      filters:[ { column:'A', equals: productCode }, { column:'Status', equals: 'SETTLED' } ],
+      filters:[ colAFilter, { column:'Status', equals: 'SETTLED' } ],
       output:{ countOnly:true }
     }).then(r => ({ j, r }))
   );

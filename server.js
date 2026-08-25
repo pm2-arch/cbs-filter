@@ -1699,16 +1699,22 @@ app.get("/config", async (req, res) => {
   res.json({
     mainFolderId: CBS_MAIN_FOLDER_ID,
     billingParentFolderId: BILLING_PARENT_FOLDER_ID || null,
-    partners: partnerList.map(p => ({
-      id: p.id,
-      name: p.name,
-      productId: p.productId,
-      productCode: productCode(p),
-      invoicePrefix: p.invoicePrefix,
-      customerId: p.customerId,
-      billedTo: normalizeBilledTo(p.billedTo),
-      hasVca: !!p.hasVca,
-    })),
+    partners: partnerList.map(p => {
+      const allIds = (Array.isArray(p.productIds) && p.productIds.length > 1)
+        ? p.productIds
+        : [p.productId];
+      return {
+        id: p.id,
+        name: p.name,
+        productId: p.productId,
+        productCode: productCode(p),
+        productCodes: allIds.map(pid => `(Prod)${pid}`),
+        invoicePrefix: p.invoicePrefix,
+        customerId: p.customerId,
+        billedTo: normalizeBilledTo(p.billedTo),
+        hasVca: !!p.hasVca,
+      };
+    }),
     user: { email },
   });
 });
