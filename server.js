@@ -2158,24 +2158,38 @@ app.post("/build-billing", async (req, res) => {
     }
 
     // ---- For outgoing: split Interbank vs Intrabank using col K (Recipient institution code) ----
-    // CUOBPHM2XXX = Intrabank (PHP 2/txn). Anything else = Interbank (PHP 3.5/txn).
+    // Only applicable when the partner has flat_rates with DIFFERENT interbank/intrabank fees
+    // (currently Magic Payment only: interbank=3.5, intrabank=2).
+    // All other partners treat every outgoing row as "interbank" for counting purposes,
+    // or use a different fee type (by_amount, etc.) that doesn't need this split at all.
     stage = "classifying interbank/intrabank";
     let interbankCount = 0;
     let intrabankCount = 0;
     if (direction === "outgoing") {
-      const kIdx = sourceHeader.findIndex((h) =>
-        /recipient\s+institution\s+code/i.test(String(h || ""))
-      );
-      if (kIdx < 0) {
-        return res.status(500).json({
-          error: "header_missing",
-          message: 'Source header missing "Recipient institution code" column (expected at column K).',
-        });
-      }
-      for (const row of matches) {
-        const codeVal = String(row[kIdx] || "").trim();
-        if (codeVal === "CUOBPHM2XXX") intrabankCount++;
-        else interbankCount++;
+      const ds = partner.fees?.disburse || {};
+      const needsSplit = ds.type === "flat_rates" &&
+        typeof ds.interbank === "number" && typeof ds.intrabank === "number" &&
+        ds.interbank !== ds.intrabank;
+
+      if (needsSplit) {
+        const kIdx = sourceHeader.findIndex((h) =>
+          /recipient\s+institution\s+code/i.test(String(h || ""))
+        );
+        if (kIdx < 0) {
+          return res.status(500).json({
+            error: "header_missing",
+            message: `Partner "${partner.name}" has different interbank/intrabank rates but the CBS outgoing file is missing a "Recipient institution code" column.`,
+          });
+        }
+        for (const row of matches) {
+          const codeVal = String(row[kIdx] || "").trim();
+          if (codeVal === "CUOBPHM2XXX") intrabankCount++;
+          else interbankCount++;
+        }
+      } else {
+        // All rows counted as interbank (or irrelevant for by_amount / same-rate flat_rates).
+        interbankCount = matches.length;
+        intrabankCount = 0;
       }
     }
 
