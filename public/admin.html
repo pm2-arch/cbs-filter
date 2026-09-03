@@ -207,6 +207,7 @@ tr:hover td{background:#f0f4ff;}
               <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
               <option value="tiered_amount">Tiered by Amount</option>
               <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
+              <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
             </select>
           </div>
           <div class="fee-type-fields" id="qrph-fields"></div>
@@ -228,6 +229,7 @@ tr:hover td{background:#f0f4ff;}
               <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
               <option value="tiered_amount">Tiered by Amount</option>
               <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
+              <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
             </select>
           </div>
           <div class="fee-type-fields" id="vca-fields"></div>
@@ -245,6 +247,8 @@ tr:hover td{background:#f0f4ff;}
             <select id="disburse-type" onchange="renderDisburseFields()">
               <option value="flat_rates">Flat Rates — separate interbank / intrabank</option>
               <option value="by_amount">By Amount — fee depends on transaction amount (AIO-style)</option>
+              <option value="tiered_amount">Tiered by Amount — flat fee per amount range</option>
+              <option value="tiered_count">Tiered by Count — all txns same rate based on run volume</option>
             </select>
           </div>
           <div class="fee-type-fields" id="disburse-fields"></div>
@@ -390,6 +394,14 @@ const FEE_TYPE_HTML = {
       <div class="form-row"><label>High Fee at Count (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFeeAtCount" placeholder="e.g. 8"/></div>
     </div>
     <div class="form-row"><label>High Fee — Default (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFeeDefault" placeholder="e.g. 10"/></div>`,
+  tiered_pct: `
+    <div class="form-hint" style="margin-bottom:8px;">Fee is a % of each transaction's amount. Each tier covers an amount range. Optional minimum floor per tier.</div>
+    <table class="tiers-table">
+      <thead><tr><th>If amount ≤ (₱, blank = last tier)</th><th>Rate (%)</th><th>Min Floor ₱ (optional)</th><th></th></tr></thead>
+      <tbody id="PFXPCTTIERS"></tbody>
+    </table>
+    <button type="button" onclick="addPctTierRow('PFX')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
+    <div class="form-hint" style="margin-top:6px;">Enter rate as percentage, e.g. 0.9 for 0.9%. Leave "amount ≤" blank for the final tier.</div>`,
 };
 const DISBURSE_HTML = {
   flat_rates: `
@@ -403,6 +415,21 @@ const DISBURSE_HTML = {
       <div class="form-row"><label>Fee if ≤ threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="lowFee" placeholder="e.g. 4"/></div>
       <div class="form-row"><label>Fee if > threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFee" placeholder="e.g. 6"/></div>
     </div>`,
+  tiered_amount: `
+    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. The last tier has no upper limit.</div>
+    <table class="tiers-table">
+      <thead><tr><th>If amount ≤ (₱)</th><th>Fee (₱)</th><th></th></tr></thead>
+      <tbody id="DISBTIERS"></tbody>
+    </table>
+    <button type="button" onclick="addTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
+    <div class="form-hint" style="margin-top:6px;">Leave "amount ≤" blank for the final (default) tier.</div>`,
+  tiered_count: `
+    <div class="form-hint" style="margin-bottom:8px;">All transactions in the billing run are billed at the <strong>SAME rate</strong>, determined by the total disburse count. Define tiers lowest to highest; last tier has no upper limit.</div>
+    <table class="tiers-table">
+      <thead><tr><th>If count ≤ (blank = last tier)</th><th>Fee per txn (₱)</th><th></th></tr></thead>
+      <tbody id="DISBCOUNTTIERS"></tbody>
+    </table>
+    <button type="button" onclick="addCountTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>`,
 };
 
 function renderFeeFields(pfx) {
@@ -422,6 +449,29 @@ function addTierRow(pfx, maxAmt, fee) {
   tr.innerHTML = `
     <td><input type="number" step="0.01" class="tier-max" value="${maxAmt !== undefined ? maxAmt : ''}" placeholder="(blank = last tier)"/></td>
     <td><input type="number" step="0.01" class="tier-fee" value="${fee !== undefined ? fee : ''}" required/></td>
+    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function addCountTierRow(pfx, maxCount, fee) {
+  const tbody = document.getElementById(`${pfx}COUNTTIERS`);
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="number" step="1" class="tier-max-count" value="${maxCount !== undefined ? maxCount : ''}" placeholder="(blank = last tier)"/></td>
+    <td><input type="number" step="0.01" class="tier-fee" value="${fee !== undefined ? fee : ''}" required/></td>
+    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function addPctTierRow(pfx, maxAmt, pctDisplay, floor) {
+  const tbody = document.getElementById(`${pfx}PCTTIERS`);
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="number" step="0.01" class="tier-max" value="${maxAmt !== undefined ? maxAmt : ''}" placeholder="(blank = last tier)"/></td>
+    <td><input type="number" step="0.001" class="tier-pct" value="${pctDisplay !== undefined ? pctDisplay : ''}" placeholder="e.g. 0.9"/></td>
+    <td><input type="number" step="0.01" class="tier-floor" value="${floor !== undefined ? floor : ''}" placeholder="optional"/></td>
     <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
   tbody.appendChild(tr);
 }
@@ -447,6 +497,12 @@ function specToForm(pfx, spec) {
     const pfxUp = pfx.toUpperCase();
     spec.tiers.forEach(t => addTierRow(pfxUp, t.maxAmt, t.fee));
   }
+  if (spec.type === 'tiered_pct' && Array.isArray(spec.tiers)) {
+    const pfxUp = pfx.toUpperCase();
+    spec.tiers.forEach(t => addPctTierRow(pfxUp, t.maxAmt,
+      t.pct !== undefined ? (t.pct * 100).toFixed(4).replace(/\.?0+$/, '') : '',
+      t.floor));
+  }
 }
 
 function disbSpecToForm(spec) {
@@ -458,6 +514,10 @@ function disbSpecToForm(spec) {
     const key = inp.dataset.key;
     if (spec[key] !== undefined) inp.value = spec[key];
   });
+  if (spec.type === 'tiered_amount' && Array.isArray(spec.tiers))
+    spec.tiers.forEach(t => addTierRow('DISB', t.maxAmt, t.fee));
+  if (spec.type === 'tiered_count' && Array.isArray(spec.tiers))
+    spec.tiers.forEach(t => addCountTierRow('DISB', t.maxCount, t.fee));
 }
 
 function formToSpec(pfx) {
@@ -487,6 +547,20 @@ function formToSpec(pfx) {
         spec.tiers.push(t);
       });
     }
+    if (type === 'tiered_pct') {
+      const pfxUp = pfx.toUpperCase();
+      spec.tiers = [];
+      wrap.querySelectorAll(`#${pfxUp}PCTTIERS tr`).forEach(tr => {
+        const pctDisplay = parseFloat(tr.querySelector('.tier-pct').value);
+        if (isNaN(pctDisplay)) return;
+        const t = { pct: Math.round(pctDisplay / 100 * 1e9) / 1e9 };
+        const maxAmt = parseFloat(tr.querySelector('.tier-max').value);
+        if (!isNaN(maxAmt)) t.maxAmt = maxAmt;
+        const floor = parseFloat(tr.querySelector('.tier-floor').value);
+        if (!isNaN(floor)) t.floor = floor;
+        spec.tiers.push(t);
+      });
+    }
   }
   return spec;
 }
@@ -499,6 +573,30 @@ function formToDisburseSpec() {
     const v = parseFloat(inp.value);
     if (!isNaN(v)) spec[key] = v;
   });
+  if (type === 'tiered_amount') {
+    spec.tiers = [];
+    document.getElementById('disburse-fields').querySelectorAll('#DISBTIERS tr').forEach(tr => {
+      const maxInp = tr.querySelector('.tier-max');
+      const feeInp = tr.querySelector('.tier-fee');
+      const feeVal = parseFloat(feeInp.value);
+      if (isNaN(feeVal)) return;
+      const t = { fee: feeVal };
+      const maxVal = parseFloat(maxInp.value);
+      if (!isNaN(maxVal)) t.maxAmt = maxVal;
+      spec.tiers.push(t);
+    });
+  }
+  if (type === 'tiered_count') {
+    spec.tiers = [];
+    document.getElementById('disburse-fields').querySelectorAll('#DISBCOUNTTIERS tr').forEach(tr => {
+      const feeVal = parseFloat(tr.querySelector('.tier-fee').value);
+      if (isNaN(feeVal)) return;
+      const t = { fee: feeVal };
+      const maxVal = parseInt(tr.querySelector('.tier-max-count').value, 10);
+      if (!isNaN(maxVal)) t.maxCount = maxVal;
+      spec.tiers.push(t);
+    });
+  }
   return spec;
 }
 
@@ -534,6 +632,8 @@ function feeSummary(fees) {
   if (d) {
     if (d.type === 'flat_rates') parts.push(`Disb: ₱${d.interbank}/${d.intrabank}`);
     else if (d.type === 'by_amount') parts.push(`Disb: ₱${d.lowFee}–₱${d.highFee} by amt`);
+    else if (d.type === 'tiered_amount') parts.push(`Disb: tiered/amt (${(d.tiers||[]).length} tiers)`);
+    else if (d.type === 'tiered_count') parts.push(`Disb: tiered/count (${(d.tiers||[]).length} tiers)`);
   }
   return parts.map(s => `<span class="fee-pill">${s}</span>`).join(' ');
 }
@@ -543,8 +643,9 @@ function feeSpecLabel(label, spec) {
   if (spec.type === 'flat') return `${label}: ₱${spec.value}`;
   if (spec.type === 'pct_floor') return `${label}: ${spec.pct*100}%+₱${spec.floor}`;
   if (spec.type === 'pct_floor_cap') return `${label}: ${spec.pct*100}%+₱${spec.floor}–₱${spec.cap}`;
-  if (spec.type === 'tiered_amount') return `${label}: tiered`;
+  if (spec.type === 'tiered_amount') return `${label}: tiered/amt`;
   if (spec.type === 'tiered_amount_count') return `${label}: ₱${spec.lowFee}/₱${spec.highFeeDefault}/₱${spec.highFeeAtCount}`;
+  if (spec.type === 'tiered_pct') return `${label}: tiered% (${(spec.tiers||[]).length} tiers)`;
   return `${label}: custom`;
 }
 

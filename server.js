@@ -342,6 +342,29 @@ function buildFeeFunc(spec) {
       return (amt, count) =>
         amt <= spec.amtThreshold ? spec.lowFee
         : (count != null && count >= spec.countThreshold ? spec.highFeeAtCount : spec.highFeeDefault);
+    case "tiered_count": {
+      const tiers = spec.tiers || [];
+      return (_, count) => {
+        for (const t of tiers) {
+          if (t.maxCount === undefined || count <= t.maxCount) return t.fee;
+        }
+        return (tiers[tiers.length - 1] || {}).fee || 0;
+      };
+    }
+    case "tiered_pct": {
+      const tiers = spec.tiers || [];
+      return (amt) => {
+        for (const t of tiers) {
+          if (t.maxAmt === undefined || amt <= t.maxAmt) {
+            const raw = amt * t.pct;
+            return t.floor != null ? Math.max(raw, t.floor) : raw;
+          }
+        }
+        const last = tiers[tiers.length - 1] || {};
+        const raw = amt * (last.pct || 0);
+        return last.floor != null ? Math.max(raw, last.floor) : raw;
+      };
+    }
     default: return () => 0;
   }
 }
@@ -352,16 +375,21 @@ function buildFeeRulesForPartner(partner) {
   const qrph = buildFeeFunc(fees.qrph);
   const vca = fees.vca ? buildFeeFunc(fees.vca) : qrph;
   const ds = fees.disburse || {};
-  const disburseByAmount = ds.type === "by_amount"
+  // by_amount kept as inline lambda (no buildFeeFunc case) for backward compat
+  // tiered_pct is incoming only — NOT in PER_TXN_DISBURSE
+  const PER_TXN_DISBURSE = ["tiered_amount", "flat", "zero"];
+  const disbursePerTxnFee = ds.type === "by_amount"
     ? (amt) => amt > ds.amtThreshold ? ds.highFee : ds.lowFee
-    : null;
+    : PER_TXN_DISBURSE.includes(ds.type) ? buildFeeFunc(ds) : null;
+  const disburseTieredCount = ds.type === "tiered_count" ? buildFeeFunc(ds) : null;
   return {
     qrph,
     vca,
     disburse: ds.type === "flat_rates"
       ? { interbank: ds.interbank || 0, intrabank: ds.intrabank || 0 }
       : { interbank: 0, intrabank: 0 },
-    disburseByAmount,
+    disbursePerTxnFee,
+    disburseTieredCount,
     qrphNote: (fees.notes && fees.notes.qrph) || "",
     vcaNote: (fees.notes && fees.notes.vca) || "",
     disburseNote: (fees.notes && fees.notes.disburse) || "",
@@ -2576,11 +2604,15 @@ app.post("/build-billing", async (req, res) => {
         const amt = Number(row[amtIdx]);
         if (Number.isFinite(amt)) disburseVolume += amt;
       }
-      if (rules.disburseByAmount) {
-        // Amount-tiered disburse (e.g. AIO): compute fee per row based on transaction amount.
+      if (rules.disburseTieredCount) {
+        // Count-tiered disburse: all txns billed at same rate, determined by total run count.
+        const rate = rules.disburseTieredCount(0, aligned.length);
+        disburseFee = aligned.length * rate;
+      } else if (rules.disbursePerTxnFee) {
+        // Per-transaction disburse fee (AIO by_amount, tiered_amount, flat, etc.).
         disburseFee = aligned.reduce((sum, row) => {
           const amt = Number(row[amtIdx]);
-          return sum + (Number.isFinite(amt) ? rules.disburseByAmount(amt) : 0);
+          return sum + (Number.isFinite(amt) ? rules.disbursePerTxnFee(amt) : 0);
         }, 0);
       } else {
         disburseFee = interbankCount * rules.disburse.interbank + intrabankCount * rules.disburse.intrabank;
@@ -2777,10 +2809,11 @@ app.post("/build-billing", async (req, res) => {
     const customerId = resolvedCustomerId;
     // For amount-tiered disburse (AIO), use a blended effective rate so the invoice total is correct.
     const invoiceDisburseCount = reportInterbankCount + reportIntrabankCount;
-    const interbankRate = rules.disburseByAmount
+    const hasPerTxnDisburse = !!(rules.disbursePerTxnFee || rules.disburseTieredCount);
+    const interbankRate = hasPerTxnDisburse
       ? round2(disburseTotalFee / Math.max(invoiceDisburseCount, 1))
       : rules.disburse.interbank;
-    const intrabankRate = rules.disburseByAmount ? interbankRate : rules.disburse.intrabank;
+    const intrabankRate = hasPerTxnDisburse ? interbankRate : rules.disburse.intrabank;
     const vcaRate = rules.vca(1, null);
     const pdfBuffer = await generateInvoiceFromTemplate({
       billingFolderId: dateFolder.id,
