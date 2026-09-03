@@ -342,6 +342,20 @@ function buildFeeFunc(spec) {
       return (amt, count) =>
         amt <= spec.amtThreshold ? spec.lowFee
         : (count != null && count >= spec.countThreshold ? spec.highFeeAtCount : spec.highFeeDefault);
+    case "rules": {
+      const compiled = (spec.rules || []).map(r => ({
+        ...r,
+        fn: buildFeeFunc(r.fee || { type: "zero" }),
+      }));
+      return (amt, count) => {
+        for (const r of compiled) {
+          const minOk = r.amtMin === undefined || amt > r.amtMin;
+          const maxOk = r.amtMax === undefined || amt <= r.amtMax;
+          if (minOk && maxOk) return r.fn(amt, count);
+        }
+        return 0;
+      };
+    }
     case "tiered_count": {
       const tiers = spec.tiers || [];
       return (_, count) => {
@@ -377,7 +391,7 @@ function buildFeeRulesForPartner(partner) {
   const ds = fees.disburse || {};
   // by_amount kept as inline lambda (no buildFeeFunc case) for backward compat
   // tiered_pct is incoming only — NOT in PER_TXN_DISBURSE
-  const PER_TXN_DISBURSE = ["tiered_amount", "flat", "zero"];
+  const PER_TXN_DISBURSE = ["tiered_amount", "flat", "zero", "rules"];
   const disbursePerTxnFee = ds.type === "by_amount"
     ? (amt) => amt > ds.amtThreshold ? ds.highFee : ds.lowFee
     : PER_TXN_DISBURSE.includes(ds.type) ? buildFeeFunc(ds) : null;

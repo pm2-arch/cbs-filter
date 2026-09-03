@@ -99,6 +99,11 @@ tr:hover td{background:#f0f4ff;}
 .rule-note{font-size:.76rem;color:#888;margin-top:3px;}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff8;border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;}
 @keyframes spin{to{transform:rotate(360deg)}}
+.rules-list{display:flex;flex-direction:column;gap:8px;margin-bottom:4px;}
+.rule-block{background:#eef3ff;border:1px solid #bfcef0;border-radius:6px;padding:10px 12px;}
+.rule-block-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.rule-block-header strong{font-size:.82rem;color:#2c4a8c;}
+.rule-fee-fields{margin-top:6px;}
 </style>
 </head>
 <body>
@@ -208,6 +213,7 @@ tr:hover td{background:#f0f4ff;}
               <option value="tiered_amount">Tiered by Amount</option>
               <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
               <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
+              <option value="rules">Fee Rules — multiple conditions with + button</option>
             </select>
           </div>
           <div class="fee-type-fields" id="qrph-fields"></div>
@@ -230,6 +236,7 @@ tr:hover td{background:#f0f4ff;}
               <option value="tiered_amount">Tiered by Amount</option>
               <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
               <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
+              <option value="rules">Fee Rules — multiple conditions with + button</option>
             </select>
           </div>
           <div class="fee-type-fields" id="vca-fields"></div>
@@ -249,6 +256,7 @@ tr:hover td{background:#f0f4ff;}
               <option value="by_amount">By Amount — fee depends on transaction amount (AIO-style)</option>
               <option value="tiered_amount">Tiered by Amount — flat fee per amount range</option>
               <option value="tiered_count">Tiered by Count — all txns same rate based on run volume</option>
+              <option value="rules">Fee Rules — multiple conditions with + button</option>
             </select>
           </div>
           <div class="fee-type-fields" id="disburse-fields"></div>
@@ -402,6 +410,26 @@ const FEE_TYPE_HTML = {
     </table>
     <button type="button" onclick="addPctTierRow('PFX')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
     <div class="form-hint" style="margin-top:6px;">Enter rate as percentage, e.g. 0.9 for 0.9%. Leave "amount ≤" blank for the final tier.</div>`,
+  rules: `
+    <div class="form-hint" style="margin-bottom:8px;">Define fee rules in order. <strong>First matching condition applies.</strong> Add a rule with no condition as the default catch-all (put it last).</div>
+    <div id="PFXRULES" class="rules-list"></div>
+    <button type="button" onclick="addRuleBlock('PFX')" style="margin-top:4px;font-size:.82rem;background:var(--nb-blue);color:#fff;border:none;border-radius:5px;padding:5px 14px;cursor:pointer;font-weight:600;">+ Add Rule</button>`,
+};
+
+const RULE_FEE_FIELD_HTML = {
+  zero: '',
+  flat: `<div class="form-row"><label>Fee Amount (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="value" placeholder="e.g. 10"/></div>`,
+  pct_floor: `
+    <div class="form-grid">
+      <div class="form-row"><label>Rate (%)</label><input type="number" step="0.001" min="0" class="fee-val" data-key="pct_display" placeholder="e.g. 0.7"/><div class="form-hint">e.g. 0.9 = 0.9%</div></div>
+      <div class="form-row"><label>Floor (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="floor" placeholder="e.g. 1.00"/></div>
+    </div>`,
+  pct_floor_cap: `
+    <div class="form-grid-3">
+      <div class="form-row"><label>Rate (%)</label><input type="number" step="0.001" min="0" class="fee-val" data-key="pct_display" placeholder="e.g. 0.7"/></div>
+      <div class="form-row"><label>Floor (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="floor" placeholder="e.g. 1.00"/></div>
+      <div class="form-row"><label>Cap (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="cap" placeholder="e.g. 7.00"/></div>
+    </div>`,
 };
 const DISBURSE_HTML = {
   flat_rates: `
@@ -430,6 +458,10 @@ const DISBURSE_HTML = {
       <tbody id="DISBCOUNTTIERS"></tbody>
     </table>
     <button type="button" onclick="addCountTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>`,
+  rules: `
+    <div class="form-hint" style="margin-bottom:8px;">Define fee rules in order. <strong>First matching condition applies.</strong> Add a rule with no condition as the default catch-all (put it last).</div>
+    <div id="DISBRULES" class="rules-list"></div>
+    <button type="button" onclick="addRuleBlock('DISB')" style="margin-top:4px;font-size:.82rem;background:var(--nb-blue);color:#fff;border:none;border-radius:5px;padding:5px 14px;cursor:pointer;font-weight:600;">+ Add Rule</button>`,
 };
 
 function renderFeeFields(pfx) {
@@ -476,6 +508,64 @@ function addPctTierRow(pfx, maxAmt, pctDisplay, floor) {
   tbody.appendChild(tr);
 }
 
+function renderRuleFeeFields(selectEl) {
+  const type = selectEl.value;
+  const fieldsDiv = selectEl.closest('.rule-block').querySelector('.rule-fee-fields');
+  fieldsDiv.innerHTML = RULE_FEE_FIELD_HTML[type] || '';
+}
+
+function addRuleBlock(pfx, data) {
+  const container = document.getElementById(`${pfx}RULES`);
+  if (!container) return;
+  const idx = container.children.length;
+  const div = document.createElement('div');
+  div.className = 'rule-block';
+  const amtMin = data && data.amtMin !== undefined ? data.amtMin : '';
+  const amtMax = data && data.amtMax !== undefined ? data.amtMax : '';
+  const feeType = (data && data.fee && data.fee.type) || 'zero';
+  div.innerHTML = `
+    <div class="rule-block-header">
+      <strong>Rule ${idx + 1}</strong>
+      <button type="button" class="del-tier" onclick="this.closest('.rule-block').remove();renumberRules('${pfx}')">&#10005;</button>
+    </div>
+    <div class="form-hint" style="margin-bottom:6px;color:#555;">Condition — leave both blank for default (catch-all)</div>
+    <div class="form-grid">
+      <div class="form-row"><label>Amount > ₱ (optional)</label><input type="number" step="0.01" class="rule-amt-min" value="${amtMin}" placeholder="no lower bound"/></div>
+      <div class="form-row"><label>Amount ≤ ₱ (optional)</label><input type="number" step="0.01" class="rule-amt-max" value="${amtMax}" placeholder="leave blank = default"/></div>
+    </div>
+    <div class="form-row" style="margin-top:8px;">
+      <label>Fee for this condition</label>
+      <select class="rule-fee-type" onchange="renderRuleFeeFields(this)">
+        <option value="zero">Zero — No fee</option>
+        <option value="flat">Flat — Fixed ₱X per transaction</option>
+        <option value="pct_floor">% + Floor — max(amt × rate, floor)</option>
+        <option value="pct_floor_cap">% + Floor + Cap</option>
+      </select>
+    </div>
+    <div class="rule-fee-fields"></div>`;
+  container.appendChild(div);
+  const sel = div.querySelector('.rule-fee-type');
+  sel.value = feeType;
+  renderRuleFeeFields(sel);
+  if (data && data.fee) {
+    const fee = data.fee;
+    const fieldsDiv = div.querySelector('.rule-fee-fields');
+    fieldsDiv.querySelectorAll('.fee-val').forEach(inp => {
+      const key = inp.dataset.key;
+      if (key === 'pct_display' && fee.pct !== undefined)
+        inp.value = (fee.pct * 100).toFixed(4).replace(/\.?0+$/, '');
+      else if (fee[key] !== undefined)
+        inp.value = fee[key];
+    });
+  }
+}
+
+function renumberRules(pfx) {
+  const container = document.getElementById(`${pfx}RULES`);
+  if (!container) return;
+  [...container.querySelectorAll('.rule-block-header strong')].forEach((el, i) => el.textContent = `Rule ${i + 1}`);
+}
+
 function specToForm(pfx, spec) {
   if (!spec) return;
   const typeEl = document.getElementById(`${pfx}-type`);
@@ -503,6 +593,10 @@ function specToForm(pfx, spec) {
       t.pct !== undefined ? (t.pct * 100).toFixed(4).replace(/\.?0+$/, '') : '',
       t.floor));
   }
+  if (spec.type === 'rules' && Array.isArray(spec.rules)) {
+    const pfxUp = pfx.toUpperCase();
+    spec.rules.forEach(r => addRuleBlock(pfxUp, r));
+  }
 }
 
 function disbSpecToForm(spec) {
@@ -518,6 +612,8 @@ function disbSpecToForm(spec) {
     spec.tiers.forEach(t => addTierRow('DISB', t.maxAmt, t.fee));
   if (spec.type === 'tiered_count' && Array.isArray(spec.tiers))
     spec.tiers.forEach(t => addCountTierRow('DISB', t.maxCount, t.fee));
+  if (spec.type === 'rules' && Array.isArray(spec.rules))
+    spec.rules.forEach(r => addRuleBlock('DISB', r));
 }
 
 function formToSpec(pfx) {
@@ -561,6 +657,28 @@ function formToSpec(pfx) {
         spec.tiers.push(t);
       });
     }
+    if (type === 'rules') {
+      const pfxUp = pfx.toUpperCase();
+      spec.rules = [];
+      (document.getElementById(`${pfxUp}RULES`) || document.createElement('div')).querySelectorAll('.rule-block').forEach(block => {
+        const feeType = block.querySelector('.rule-fee-type').value;
+        const fee = { type: feeType };
+        block.querySelectorAll('.rule-fee-fields .fee-val').forEach(inp => {
+          const key = inp.dataset.key;
+          const v = parseFloat(inp.value);
+          if (!isNaN(v)) {
+            if (key === 'pct_display') fee.pct = Math.round(v / 100 * 1e9) / 1e9;
+            else fee[key] = v;
+          }
+        });
+        const rule = { fee };
+        const amtMin = parseFloat(block.querySelector('.rule-amt-min').value);
+        const amtMax = parseFloat(block.querySelector('.rule-amt-max').value);
+        if (!isNaN(amtMin)) rule.amtMin = amtMin;
+        if (!isNaN(amtMax)) rule.amtMax = amtMax;
+        spec.rules.push(rule);
+      });
+    }
   }
   return spec;
 }
@@ -595,6 +713,27 @@ function formToDisburseSpec() {
       const maxVal = parseInt(tr.querySelector('.tier-max-count').value, 10);
       if (!isNaN(maxVal)) t.maxCount = maxVal;
       spec.tiers.push(t);
+    });
+  }
+  if (type === 'rules') {
+    spec.rules = [];
+    (document.getElementById('DISBRULES') || document.createElement('div')).querySelectorAll('.rule-block').forEach(block => {
+      const feeType = block.querySelector('.rule-fee-type').value;
+      const fee = { type: feeType };
+      block.querySelectorAll('.rule-fee-fields .fee-val').forEach(inp => {
+        const key = inp.dataset.key;
+        const v = parseFloat(inp.value);
+        if (!isNaN(v)) {
+          if (key === 'pct_display') fee.pct = Math.round(v / 100 * 1e9) / 1e9;
+          else fee[key] = v;
+        }
+      });
+      const rule = { fee };
+      const amtMin = parseFloat(block.querySelector('.rule-amt-min').value);
+      const amtMax = parseFloat(block.querySelector('.rule-amt-max').value);
+      if (!isNaN(amtMin)) rule.amtMin = amtMin;
+      if (!isNaN(amtMax)) rule.amtMax = amtMax;
+      spec.rules.push(rule);
     });
   }
   return spec;
@@ -634,6 +773,7 @@ function feeSummary(fees) {
     else if (d.type === 'by_amount') parts.push(`Disb: ₱${d.lowFee}–₱${d.highFee} by amt`);
     else if (d.type === 'tiered_amount') parts.push(`Disb: tiered/amt (${(d.tiers||[]).length} tiers)`);
     else if (d.type === 'tiered_count') parts.push(`Disb: tiered/count (${(d.tiers||[]).length} tiers)`);
+    else if (d.type === 'rules') parts.push(`Disb: ${(d.rules||[]).length} fee rules`);
   }
   return parts.map(s => `<span class="fee-pill">${s}</span>`).join(' ');
 }
@@ -646,6 +786,7 @@ function feeSpecLabel(label, spec) {
   if (spec.type === 'tiered_amount') return `${label}: tiered/amt`;
   if (spec.type === 'tiered_amount_count') return `${label}: ₱${spec.lowFee}/₱${spec.highFeeDefault}/₱${spec.highFeeAtCount}`;
   if (spec.type === 'tiered_pct') return `${label}: tiered% (${(spec.tiers||[]).length} tiers)`;
+  if (spec.type === 'rules') return `${label}: ${(spec.rules||[]).length} rules`;
   return `${label}: custom`;
 }
 
