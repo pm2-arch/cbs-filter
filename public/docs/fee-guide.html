@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fee Types User Guide — Billing Console</title>
+  <link rel="icon" href="/brand/favicon-32.png" type="image/png"/>
+  <style>
+    :root {
+      --nb-blue: #003399;
+      --nb-gold: #FFCC00;
+      --nb-dark: #1a1a2e;
+      --nb-light: #f4f6fb;
+      --nb-text: #1e293b;
+      --nb-muted: #64748b;
+      --nb-border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--nb-light);
+      color: var(--nb-text);
+      line-height: 1.65;
+    }
+
+    header {
+      background: var(--nb-blue);
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    header img { height: 36px; }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    header span { color: var(--nb-gold); font-size: 0.85rem; margin-top: 2px; display: block; }
+
+    .layout { display: flex; min-height: calc(100vh - 65px); }
+
+    /* Sidebar TOC */
+    nav {
+      width: 240px;
+      flex-shrink: 0;
+      background: white;
+      border-right: 1px solid var(--nb-border);
+      padding: 24px 0;
+      position: sticky;
+      top: 0;
+      height: calc(100vh - 65px);
+      overflow-y: auto;
+    }
+    nav .toc-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--nb-muted);
+      padding: 0 20px 12px;
+    }
+    nav a {
+      display: block;
+      padding: 7px 20px;
+      color: var(--nb-text);
+      text-decoration: none;
+      font-size: 0.875rem;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+    nav a:hover { background: var(--nb-light); color: var(--nb-blue); }
+    nav a.active { border-left-color: var(--nb-blue); color: var(--nb-blue); font-weight: 600; background: #eef2ff; }
+    nav a.sub { padding-left: 32px; font-size: 0.82rem; color: var(--nb-muted); }
+
+    /* Main content */
+    main {
+      flex: 1;
+      padding: 40px 48px;
+      max-width: 860px;
+    }
+
+    .page-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--nb-blue);
+      margin-bottom: 6px;
+    }
+    .page-subtitle {
+      color: var(--nb-muted);
+      font-size: 0.9rem;
+      margin-bottom: 36px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--nb-border);
+    }
+
+    .section { margin-bottom: 56px; scroll-margin-top: 24px; }
+
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--nb-blue);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--nb-gold);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2 .badge {
+      background: var(--nb-blue);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+    h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--nb-text);
+      margin: 20px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--nb-muted);
+    }
+
+    p { margin-bottom: 12px; }
+
+    .pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-right: 4px;
+    }
+    .pill-green { background: #dcfce7; color: #15803d; }
+    .pill-blue { background: #dbeafe; color: #1d4ed8; }
+    .pill-orange { background: #ffedd5; color: #c2410c; }
+
+    .formula-box {
+      background: #1e293b;
+      color: #e2e8f0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.88rem;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+
+    .example-box {
+      background: white;
+      border: 1px solid var(--nb-border);
+      border-left: 4px solid var(--nb-gold);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+    }
+    .example-box strong { color: var(--nb-blue); }
+
+    .billing-box {
+      background: #f8fafc;
+      border: 1px solid var(--nb-border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 12px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+    }
+    .billing-box .comment { color: #94a3b8; }
+
+    .tip {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      margin: 12px 0;
+      display: flex;
+      gap: 10px;
+    }
+    .tip-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+    .warn {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      margin: 12px 0;
+      display: flex;
+      gap: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin: 16px 0;
+    }
+    th {
+      background: var(--nb-blue);
+      color: white;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    td { padding: 9px 12px; border-bottom: 1px solid var(--nb-border); }
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    .steps ol { padding-left: 20px; }
+    .steps li { margin-bottom: 8px; font-size: 0.9rem; }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .fee-card {
+      background: white;
+      border: 1px solid var(--nb-border);
+      border-radius: 10px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .fee-card:hover { border-color: var(--nb-blue); box-shadow: 0 2px 8px rgba(0,51,153,0.1); }
+    .fee-card .fc-num { font-size: 0.7rem; font-weight: 700; color: var(--nb-blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .fee-card .fc-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
+    .fee-card .fc-desc { font-size: 0.8rem; color: var(--nb-muted); }
+    .fee-card .fc-avail { margin-top: 8px; }
+
+    .decision-box {
+      background: white;
+      border: 1px solid var(--nb-border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      line-height: 2;
+    }
+    .decision-box .q { color: var(--nb-text); font-weight: 600; }
+    .decision-box .a { color: var(--nb-blue); font-weight: 700; margin-left: 16px; }
+
+    .mistake-icon { color: #ef4444; font-weight: 700; }
+    .fix-icon { color: #22c55e; font-weight: 700; }
+
+    @media (max-width: 768px) {
+      nav { display: none; }
+      main { padding: 24px 20px; }
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="/brand/favicon-192.png" alt="Netbank"/>
+  <div>
+    <h1>Billing Console — Fee Types Guide</h1>
+    <span>Admin Portal Reference · CBS Filter Service</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <nav id="sidebar">
+    <div class="toc-title">Contents</div>
+    <a href="#overview">Overview</a>
+    <a href="#s1">1 — Zero</a>
+    <a href="#s2">2 — Flat</a>
+    <a href="#s3">3 — % + Floor</a>
+    <a href="#s4">4 — % + Floor + Cap</a>
+    <a href="#s5">5 — Tiered by Amount</a>
+    <a href="#s6">6 — Tiered by Amount + Run Count</a>
+    <a href="#s7">7 — Tiered Percentage</a>
+    <a href="#s8">8 — Tiered by Count</a>
+    <a href="#s9">9 — Fee Rules</a>
+    <a href="#decision">Quick Decision Guide</a>
+    <a href="#mistakes">Common Mistakes</a>
+    <a href="#feenote">Fee Note Field</a>
+  </nav>
+
+  <main>
+
+    <div class="page-title">Fee Types User Guide</div>
+    <div class="page-subtitle">
+      Learn how to configure partner fees correctly in the Admin Portal.<br>
+      Every partner has three fee directions: <strong>QRPh</strong>, <strong>VCA</strong>, and <strong>Disburse</strong>. Each direction is configured independently.
+    </div>
+
+    <!-- OVERVIEW -->
+    <div class="section" id="overview">
+      <h2>Overview — All Fee Types</h2>
+      <div class="overview-grid">
+        <a href="#s1" class="fee-card">
+          <div class="fc-num">Type 1</div>
+          <div class="fc-name">Zero</div>
+          <div class="fc-desc">No fee charged for this direction.</div>
+          <div class="fc-avail"><span class="pill pill-green">QRPh</span><span class="pill pill-green">VCA</span><span class="pill pill-green">Disburse</span></div>
+        </a>
+        <a href="#s2" class="fee-card">
+          <div class="fc-num">Type 2</div>
+          <div class="fc-name">Flat</div>
+          <div class="fc-desc">Same fixed ₱ amount every transaction.</div>
+          <div class="fc-avail"><span class="pill pill-green">QRPh</span><span class="pill pill-green">VCA</span><span class="pill pill-green">Disburse</span></div>
+        </a>
+        <a href="#s3" class="fee-card">
+          <div class="fc-num">Type 3</div>
+          <div class="fc-name">% + Floor</div>
+          <div class="fc-desc">Percentage of amount, never less than a minimum.</div>
+          <div class="fc-avail"><span class="pill pill-blue">QRPh</span><span class="pill pill-blue">VCA</span></div>
+        </a>
+        <a href="#s4" class="fee-card">
+          <div class="fc-num">Type 4</div>
+          <div class="fc-name">% + Floor + Cap</div>
+          <div class="fc-desc">Percentage with both a minimum and maximum cap.</div>
+          <div class="fc-avail"><span class="pill pill-blue">QRPh</span><span class="pill pill-blue">VCA</span></div>
+        </a>
+        <a href="#s5" class="fee-card">
+          <div class="fc-num">Type 5</div>
+          <div class="fc-name">Tiered by Amount</div>
+          <div class="fc-desc">Different flat fee depending on transaction size.</div>
+          <div class="fc-avail"><span class="pill pill-green">QRPh</span><span class="pill pill-green">VCA</span><span class="pill pill-green">Disburse</span></div>
+        </a>
+        <a href="#s6" class="fee-card">
+          <div class="fc-num">Type 6</div>
+          <div class="fc-name">Tiered by Amount + Run Count</div>
+          <div class="fc-desc">Fee depends on both transaction size AND monthly volume.</div>
+          <div class="fc-avail"><span class="pill pill-blue">QRPh</span><span class="pill pill-blue">VCA</span></div>
+        </a>
+        <a href="#s7" class="fee-card">
+          <div class="fc-num">Type 7</div>
+          <div class="fc-name">Tiered Percentage</div>
+          <div class="fc-desc">Different percentage rate per amount range, optional floor.</div>
+          <div class="fc-avail"><span class="pill pill-blue">QRPh</span><span class="pill pill-blue">VCA only</span></div>
+        </a>
+        <a href="#s8" class="fee-card">
+          <div class="fc-num">Type 8</div>
+          <div class="fc-name">Tiered by Count</div>
+          <div class="fc-desc">All transactions same rate set by total monthly volume.</div>
+          <div class="fc-avail"><span class="pill pill-orange">Disburse only</span></div>
+        </a>
+        <a href="#s9" class="fee-card" style="grid-column: 1 / -1;">
+          <div class="fc-num">Type 9</div>
+          <div class="fc-name">Fee Rules</div>
+          <div class="fc-desc">Multiple conditions with different fee types per condition. Use when none of the above fits.</div>
+          <div class="fc-avail"><span class="pill pill-green">QRPh</span><span class="pill pill-green">VCA</span><span class="pill pill-green">Disburse</span></div>
+        </a>
+      </div>
+    </div>
+
+    <!-- TYPE 1 -->
+    <div class="section" id="s1">
+      <h2><span class="badge">1</span> Zero</h2>
+      <p>Charges <strong>no fee</strong> for this direction. Use this when a partner is not billed for a specific transaction type.</p>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Partner has no VCA transactions</li>
+        <li>Fee was waived for a direction during negotiation</li>
+        <li>Direction is not applicable to this partner</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Zero — No fee</strong> from the Fee Type dropdown</li>
+        <li>No additional fields needed — click <strong>Save</strong></li>
+      </ol></div>
+      <div class="example-box">
+        <strong>Example:</strong> VLPay has no VCA billing.<br>
+        Set VCA Fee → <strong>Zero</strong>
+      </div>
+    </div>
+
+    <!-- TYPE 2 -->
+    <div class="section" id="s2">
+      <h2><span class="badge">2</span> Flat</h2>
+      <p>Charges the <strong>same fixed PHP amount</strong> for every transaction, regardless of transaction size.</p>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Partner has a simple per-transaction fee</li>
+        <li>Transaction amount does not affect the fee</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Flat — Fixed ₱X per transaction</strong></li>
+        <li>Enter the <strong>Fee Amount (₱)</strong> — e.g. <code>8</code> for PHP 8 per transaction</li>
+      </ol></div>
+      <div class="example-box">
+        <strong>Example:</strong> MaxJoy charges PHP 10 per QRPh transaction.<br>
+        QRPh Fee → <strong>Flat</strong> → Fee Amount: <code>10</code>
+      </div>
+      <div class="billing-box">
+        100 transactions × PHP 10.00 = <strong>PHP 1,000.00</strong> total fee
+      </div>
+    </div>
+
+    <!-- TYPE 3 -->
+    <div class="section" id="s3">
+      <h2><span class="badge">3</span> % + Floor</h2>
+      <p>Charges a <strong>percentage of the transaction amount</strong>, but never less than a minimum floor.</p>
+      <div class="formula-box">fee = max(amount × rate%, floor)</div>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Fee is percentage-based</li>
+        <li>Small transactions need a minimum charge</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>% + Floor</strong></li>
+        <li>Enter <strong>Rate (%)</strong> — e.g. <code>0.7</code> for 0.7%</li>
+        <li>Enter <strong>Floor (₱)</strong> — the minimum fee per transaction, e.g. <code>1</code></li>
+      </ol></div>
+      <div class="tip"><span class="tip-icon">💡</span> Enter the rate as a percentage number. For 0.7%, type <code>0.7</code> — not <code>0.007</code>. The portal converts it automatically.</div>
+      <div class="example-box">
+        <strong>Example:</strong> Magic Payment charges 0.7% for QRPh, minimum PHP 1.<br>
+        QRPh Fee → <strong>% + Floor</strong> → Rate: <code>0.7</code> → Floor: <code>1</code>
+      </div>
+      <div class="billing-box">
+PHP 50 transaction:    max(50 × 0.7%, 1.00) = max(0.35, 1.00) = <strong>PHP 1.00</strong>  <span class="comment">← floor applied</span>
+PHP 500 transaction:   max(500 × 0.7%, 1.00) = max(3.50, 1.00) = <strong>PHP 3.50</strong>
+PHP 2,000 transaction: max(2000 × 0.7%, 1.00) = max(14.00, 1.00) = <strong>PHP 14.00</strong>
+      </div>
+    </div>
+
+    <!-- TYPE 4 -->
+    <div class="section" id="s4">
+      <h2><span class="badge">4</span> % + Floor + Cap</h2>
+      <p>Same as % + Floor, but adds a <strong>maximum cap</strong> — the fee can never exceed a certain amount.</p>
+      <div class="formula-box">fee = min( max(amount × rate%, floor), cap )</div>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Partner fee has a ceiling for large transactions</li>
+        <li>Protects partners from very high fees on large transfers</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>% + Floor + Cap</strong></li>
+        <li>Enter <strong>Rate (%)</strong>, <strong>Floor (₱)</strong>, and <strong>Cap (₱)</strong></li>
+      </ol></div>
+      <div class="example-box">
+        <strong>Example:</strong> HoPay charges 0.5% for QRPh, minimum PHP 1, maximum PHP 5.<br>
+        QRPh Fee → <strong>% + Floor + Cap</strong> → Rate: <code>0.5</code> → Floor: <code>1</code> → Cap: <code>5</code>
+      </div>
+      <div class="billing-box">
+PHP 100:    min(max(0.50, 1), 5) = <strong>PHP 1.00</strong>  <span class="comment">← floor applied</span>
+PHP 500:    min(max(2.50, 1), 5) = <strong>PHP 2.50</strong>
+PHP 2,000:  min(max(10.00, 1), 5) = <strong>PHP 5.00</strong>  <span class="comment">← cap applied</span>
+      </div>
+    </div>
+
+    <!-- TYPE 5 -->
+    <div class="section" id="s5">
+      <h2><span class="badge">5</span> Tiered by Amount</h2>
+      <p>Charges a <strong>flat fee that depends on the transaction amount</strong>. Larger transactions get a different fee than smaller ones.</p>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Partner fee schedule has a table of amount ranges, each with a different flat fee</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Tiered by Amount — flat fee per amount range</strong></li>
+        <li>Click <strong>+ Add Tier</strong> for each row in the partner's fee schedule</li>
+        <li>For each tier: enter <strong>Up to amount ₱</strong> (leave blank for the last/default tier) and <strong>Fee (₱)</strong></li>
+      </ol></div>
+      <div class="tip"><span class="tip-icon">💡</span> Always leave the last tier's amount blank — it becomes the default for everything above the highest threshold.</div>
+      <div class="example-box">
+        <strong>Example:</strong> PHP 5 for transactions up to PHP 300, PHP 10 for anything above.<br><br>
+        Tier 1: Amount ≤ <code>300</code> → Fee: <code>5</code><br>
+        Tier 2: Amount ≤ <em>(blank)</em> → Fee: <code>10</code>
+      </div>
+      <div class="billing-box">
+PHP 150 → Tier 1 (≤300) → <strong>PHP 5.00</strong>
+PHP 500 → Tier 2 (default) → <strong>PHP 10.00</strong>
+      </div>
+    </div>
+
+    <!-- TYPE 6 -->
+    <div class="section" id="s6">
+      <h2><span class="badge">6</span> Tiered by Amount + Run Count <em style="font-size:0.85rem;font-weight:400;">(AIO-style)</em></h2>
+      <p>The fee depends on <strong>both the transaction amount AND the total number of transactions</strong> in the billing run. Volume discount kicks in when the monthly count crosses a threshold.</p>
+      <div class="warn"><span class="tip-icon">📋</span> Currently used by: <strong>AIO Solutions</strong></div>
+      <h3>How to configure</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Meaning</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Amount Threshold (₱)</td><td>Transactions AT OR BELOW this use the Low Fee</td><td>600</td></tr>
+          <tr><td>Low Fee (₱)</td><td>Fee for transactions ≤ Amount Threshold</td><td>6</td></tr>
+          <tr><td>Count Threshold (txns)</td><td>Monthly count where volume discount kicks in</td><td>30000</td></tr>
+          <tr><td>High Fee at Count (₱)</td><td>Fee for txns > Amount Threshold AND count ≥ Count Threshold</td><td>8</td></tr>
+          <tr><td>High Fee — Default (₱)</td><td>Fee for txns > Amount Threshold when count not yet at threshold</td><td>10</td></tr>
+        </tbody>
+      </table>
+      <div class="billing-box">
+PHP 400 (any count):        → <strong>PHP 6.00</strong>  <span class="comment">← below amount threshold</span>
+PHP 1,500, count = 15,000:  → <strong>PHP 10.00</strong> <span class="comment">← above amt, below count threshold</span>
+PHP 1,500, count = 35,000:  → <strong>PHP 8.00</strong>  <span class="comment">← above amt, volume discount!</span>
+      </div>
+    </div>
+
+    <!-- TYPE 7 -->
+    <div class="section" id="s7">
+      <h2><span class="badge">7</span> Tiered Percentage <em style="font-size:0.85rem;font-weight:400;">— Incoming only</em></h2>
+      <p>The <strong>percentage rate changes</strong> depending on the transaction amount — smaller transactions have a higher rate, larger ones a lower rate. Optional minimum floor per tier.</p>
+      <div class="warn"><span class="tip-icon">⚠️</span> Available on <strong>QRPh and VCA only</strong> — not on Disburse.</div>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Tiered Percentage — % per amount range</strong></li>
+        <li>Click <strong>+ Add Tier</strong> for each rate in the schedule</li>
+        <li>For each tier: <strong>Up to amount ₱</strong> (blank for last), <strong>Rate (%)</strong>, and optional <strong>Min Floor ₱</strong></li>
+      </ol></div>
+      <div class="example-box">
+        <strong>Example:</strong> ≤PHP 120: 0.90% / floor PHP 1 &nbsp;|&nbsp; PHP 121–250: 0.75% &nbsp;|&nbsp; PHP 251–500: 0.60% &nbsp;|&nbsp; above: 0.50%
+      </div>
+      <table>
+        <thead><tr><th>Tier</th><th>Amount ≤</th><th>Rate %</th><th>Floor</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>120</td><td>0.9</td><td>1</td></tr>
+          <tr><td>2</td><td>250</td><td>0.75</td><td>—</td></tr>
+          <tr><td>3</td><td>500</td><td>0.60</td><td>—</td></tr>
+          <tr><td>4</td><td><em>(blank — default)</em></td><td>0.50</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <div class="billing-box">
+PHP 100:   max(100 × 0.9%, 1.00) = <strong>PHP 1.00</strong>
+PHP 200:   200 × 0.75%           = <strong>PHP 1.50</strong>
+PHP 400:   400 × 0.60%           = <strong>PHP 2.40</strong>
+PHP 800:   800 × 0.50%           = <strong>PHP 4.00</strong>
+      </div>
+    </div>
+
+    <!-- TYPE 8 -->
+    <div class="section" id="s8">
+      <h2><span class="badge">8</span> Tiered by Count <em style="font-size:0.85rem;font-weight:400;">— Disburse only</em></h2>
+      <p>All transactions in a billing run are charged at the <strong>same flat rate</strong>, determined by the <strong>total number of transactions</strong> in the run. Higher volume = lower rate for ALL transactions.</p>
+      <div class="warn"><span class="tip-icon">⚠️</span> Available on <strong>Disburse only</strong> — not on QRPh or VCA.</div>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Tiered by Count — all txns same rate based on run volume</strong></li>
+        <li>Click <strong>+ Add Tier</strong> for each count threshold</li>
+        <li>For each tier: <strong>Up to count</strong> (blank for last) and <strong>Fee per txn (₱)</strong></li>
+      </ol></div>
+      <div class="example-box">
+        <strong>Example:</strong><br>
+        &lt;30,000 txns: PHP 9.50/txn &nbsp;|&nbsp; 30k–99,999: PHP 9.00 &nbsp;|&nbsp; 100k–299,999: PHP 8.00 &nbsp;|&nbsp; 300k–499,999: PHP 7.00 &nbsp;|&nbsp; 500k+: PHP 5.00
+      </div>
+      <div class="billing-box">
+Monthly run = 487 transactions:
+  → Rate = PHP 9.50 (count &lt; 30,000)
+  → Total = 487 × PHP 9.50 = <strong>PHP 4,626.50</strong>
+
+Monthly run = 55,000 transactions:
+  → Rate = PHP 9.00 (count 30,000–99,999)
+  → Total = 55,000 × PHP 9.00 = <strong>PHP 495,000.00</strong>
+      </div>
+    </div>
+
+    <!-- TYPE 9 -->
+    <div class="section" id="s9">
+      <h2><span class="badge">9</span> Fee Rules</h2>
+      <p>Lets you define <strong>multiple conditions</strong> with <strong>different fee types</strong> per condition. The billing engine checks each rule top to bottom and uses the <strong>first rule that matches</strong>.</p>
+      <h3>When to use</h3>
+      <ul style="padding-left:20px;font-size:0.9rem;margin-bottom:12px;">
+        <li>Partner has conditions that need different fee <em>types</em> (e.g. Rule 1 = flat, Rule 2 = percentage)</li>
+        <li>Partner has many if-else conditions in their contract</li>
+        <li>None of the simpler fee types above fully covers the schedule</li>
+      </ul>
+      <h3>How to configure</h3>
+      <div class="steps"><ol>
+        <li>Select <strong>Fee Rules — multiple conditions with + button</strong></li>
+        <li>Click <strong>+ Add Rule</strong> for each condition</li>
+        <li>For each rule set: <strong>Amount &gt; ₱</strong> (optional lower bound) and <strong>Amount ≤ ₱</strong> (optional upper bound)</li>
+        <li>Choose the fee type and fill in its fields: Zero / Flat / % + Floor / % + Floor + Cap</li>
+        <li>Always add a <strong>default rule last</strong> — leave both amount fields blank</li>
+      </ol></div>
+      <div class="warn"><span class="tip-icon">⚠️</span> Rules are evaluated <strong>top to bottom</strong>. Put specific conditions first and the default (catch-all) last.</div>
+
+      <h3>Example 1 — Small transactions free, large ones billed</h3>
+      <table>
+        <thead><tr><th>Rule</th><th>Condition</th><th>Fee</th></tr></thead>
+        <tbody>
+          <tr><td>Rule 1</td><td>Amount ≤ PHP 100</td><td>Zero — no fee</td></tr>
+          <tr><td>Rule 2</td><td>(default)</td><td>Flat — PHP 5.00</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Example 2 — Mixed flat and percentage</h3>
+      <table>
+        <thead><tr><th>Rule</th><th>Condition</th><th>Fee</th></tr></thead>
+        <tbody>
+          <tr><td>Rule 1</td><td>Amount ≤ PHP 500</td><td>Flat — PHP 3.00</td></tr>
+          <tr><td>Rule 2</td><td>(default — above PHP 500)</td><td>% + Floor — 0.8%, floor PHP 3</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><span class="tip-icon">🗑️</span> To delete a rule, click the <strong>✕</strong> button on the right of the rule block. Rules renumber automatically.</div>
+    </div>
+
+    <!-- QUICK DECISION -->
+    <div class="section" id="decision">
+      <h2>Quick Decision Guide</h2>
+      <p>Not sure which fee type to pick? Follow this:</p>
+      <div class="decision-box">
+        <div class="q">Is the fee always PHP 0?</div>
+        <div class="a">→ Zero</div>
+        <div class="q">Same fixed amount every transaction?</div>
+        <div class="a">→ Flat</div>
+        <div class="q">Percentage, with a minimum?</div>
+        <div class="a">→ % + Floor</div>
+        <div class="q">Percentage, with a minimum AND maximum?</div>
+        <div class="a">→ % + Floor + Cap</div>
+        <div class="q">Different fixed amount per transaction size?</div>
+        <div class="a">→ Tiered by Amount</div>
+        <div class="q">Depends on BOTH transaction size AND monthly volume?</div>
+        <div class="a">→ Tiered by Amount + Run Count</div>
+        <div class="q">Different percentage per amount range? (QRPh/VCA only)</div>
+        <div class="a">→ Tiered Percentage</div>
+        <div class="q">All transactions same rate, set by total monthly count? (Disburse only)</div>
+        <div class="a">→ Tiered by Count</div>
+        <div class="q">None of the above, or mixed fee types per condition?</div>
+        <div class="a">→ Fee Rules</div>
+      </div>
+    </div>
+
+    <!-- MISTAKES -->
+    <div class="section" id="mistakes">
+      <h2>Common Mistakes</h2>
+      <table>
+        <thead><tr><th>❌ Mistake</th><th>✅ What to do instead</th></tr></thead>
+        <tbody>
+          <tr><td>Entering <code>0.007</code> for 0.7%</td><td>Enter <code>0.7</code> — the portal converts it automatically</td></tr>
+          <tr><td>Forgetting the default tier/rule</td><td>Always add a final tier/rule with no upper limit (leave amount blank)</td></tr>
+          <tr><td>Putting the default rule first</td><td>Default must be LAST — rules are checked top to bottom</td></tr>
+          <tr><td>Setting VCA to Zero when partner has no VCA</td><td>That's correct — Zero is the right setting</td></tr>
+          <tr><td>Using Tiered Percentage on Disburse</td><td>Tiered Percentage is Incoming only; use Fee Rules for Disburse</td></tr>
+          <tr><td>Using Tiered by Count on QRPh or VCA</td><td>Tiered by Count is Disburse only</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- FEE NOTE -->
+    <div class="section" id="feenote">
+      <h2>Fee Note Field</h2>
+      <p>Every fee direction has a <strong>Fee Note</strong> text box below the fee configuration. This is a plain-language description that appears in the <strong>SUMMARY tab</strong> of the billing report — it is NOT used in any calculation.</p>
+      <table>
+        <thead><tr><th>Fee Type</th><th>Example Fee Note</th></tr></thead>
+        <tbody>
+          <tr><td>Flat</td><td>PHP 10 per transaction</td></tr>
+          <tr><td>% + Floor</td><td>0.7% or PHP 1.00 whichever is higher</td></tr>
+          <tr><td>Tiered by Amount + Run Count</td><td>PHP 6 (≤₱600); PHP 10 or PHP 8 volume discount (&gt;30k txns)</td></tr>
+          <tr><td>Tiered by Count</td><td>PHP 9.50 (&lt;30k) / PHP 9.00 (30k-99k) / PHP 8.00 (100k-299k)</td></tr>
+          <tr><td>Fee Rules / Tiered %</td><td>0.90%/floor₱1 (≤₱120) / 0.75% (₱121-250) / 0.50% (&gt;₱500)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Highlight active TOC link on scroll
+  const sections = document.querySelectorAll('.section[id]');
+  const links = document.querySelectorAll('nav a');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const link = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -75% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
