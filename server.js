@@ -1166,10 +1166,11 @@ function clientError(err, fallback) {
 // Template cell detection — label scans in SUMMARY column A
 // ---------------------------------------------------------------------------
 async function findSummaryCells(sheets, billingFileId) {
-  // Pull SUMMARY A1:E40 to map labels → row indices (col E used by V5/TopJuan TOTAL row).
+  // Pull SUMMARY A1:E60 to map labels → row indices (col E used by V5/TopJuan TOTAL row).
+  // 60 rows covers all known templates with room to grow — previously 40 caused silent misses.
   const r = await sheets.spreadsheets.values.get({
     spreadsheetId: billingFileId,
-    range: "SUMMARY!A1:E40",
+    range: "SUMMARY!A1:E60",
     valueRenderOption: "FORMATTED_VALUE",
   });
   const rows = r.data.values || [];
@@ -2744,18 +2745,22 @@ app.post("/build-billing", async (req, res) => {
       valueRenderOption: "UNFORMATTED_VALUE",
     }), { label: "reading report state" });
     const sv = (i) => Number((sumRead.data.valueRanges[i]?.values?.[0]?.[0]) || 0);
-    // Round the source fee totals to centavos up front so every figure derived
-    // from them (grand total, amount due, invoice lines) stays at 2 decimals.
-    const qrphTotalFee = round2(sv(0));
-    const qrphCount = sv(1);
-    const disburseTotalFee = round2(sv(2));
-    const disburseCount = sv(3);
+    // For the CURRENT direction, use locally computed values — never the Sheets read-back.
+    // The read-back is only used to accumulate fees from OTHER directions written in prior runs.
+    // This eliminates the write-then-read-back dependency that has caused persistent invoice errors:
+    // if a Sheets write fails or a row label is misidentified, the current direction's total
+    // is still correct because it comes from the in-memory computation, not from Sheets.
+    const qrphTotalFee   = direction === "incoming" ? round2(qrphFee)    : round2(sv(0));
+    const qrphCount      = direction === "incoming" ? matches.length      : sv(1);
+    const disburseTotalFee = direction === "disburse" ? round2(disburseFee) : round2(sv(2));
+    const disburseCount  = direction === "disburse" ? matches.length      : sv(3);
     const eValues = (sumRead.data.valueRanges[4]?.values || []).flat();
     const kValues = (sumRead.data.valueRanges[5]?.values || []).flat();
-    // VCA total: only non-zero when vcaFeeRow was found and a prior VCA run wrote a value.
-    const vcaTotalFee = sumCells.vcaFeeRow ? round2(sv(6)) : 0;
-    // VCA count: stored by the VCA direction run in vcaFeeRow+1; used to compute the effective rate.
-    const vcaStoredCount = sv(9);
+    // VCA total: current VCA run uses local vcaFee; other directions read from SUMMARY.
+    const vcaTotalFee    = direction === "vca"      ? round2(vcaFee)
+                         : sumCells.vcaFeeRow       ? round2(sv(6)) : 0;
+    // VCA count: current VCA run uses matches.length directly; other directions read stored count.
+    const vcaStoredCount = direction === "vca" ? matches.length : sv(9);
     // Interbank/intrabank: prefer SUMMARY stored counts (written by blank-sheet runs);
     // fall back to scanning DISBURSE!E:E + K:K for old template-based reports.
     const summaryInterbankCount = sv(7);
