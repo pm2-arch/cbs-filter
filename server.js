@@ -2682,7 +2682,7 @@ app.post("/build-billing", async (req, res) => {
         sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow}`, values: [[vcaFee]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 1}`, values: [[matches.length]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 2}`, values: [[vcaVolume]] });
-        sumUpdates.push({ range: `SUMMARY!C${sumCells.vcaFeeRow}`, values: [[rules.vca(1)]] });
+        sumUpdates.push({ range: `SUMMARY!C${sumCells.vcaFeeRow}`, values: [[matches.length > 0 ? round2(vcaFee / matches.length) : rules.vca(1)]] });
       }
     } else if (direction === "incoming") {
       if (sumCells.qrphFeeRow) {
@@ -2734,8 +2734,9 @@ app.post("/build-billing", async (req, res) => {
       sumCells.vcaFeeRow ? `SUMMARY!B${sumCells.vcaFeeRow}` : "SUMMARY!B1",             // 6: VCA fee
       sumCells.interbankCountRow ? `SUMMARY!B${sumCells.interbankCountRow}` : "SUMMARY!B24", // 7: interbank count
       sumCells.intrabankCountRow ? `SUMMARY!B${sumCells.intrabankCountRow}` : "SUMMARY!B25", // 8: intrabank count
+      sumCells.vcaFeeRow ? `SUMMARY!B${sumCells.vcaFeeRow + 1}` : "SUMMARY!B1",             // 9: VCA txn count (stored by VCA direction run)
     ];
-    const subRowsIdx = 9; // sub-period range always at index 9 (after the new interbank entries)
+    const subRowsIdx = 10; // sub-period range at index 10 (shifted by VCA count entry above)
     if (subRows.length === 3) readRanges.push(`SUMMARY!B${subRows[0]}:B${subRows[2]}`);
     const sumRead = await withRetry(() => sheets.spreadsheets.values.batchGet({
       spreadsheetId: reportFileId,
@@ -2753,6 +2754,8 @@ app.post("/build-billing", async (req, res) => {
     const kValues = (sumRead.data.valueRanges[5]?.values || []).flat();
     // VCA total: only non-zero when vcaFeeRow was found and a prior VCA run wrote a value.
     const vcaTotalFee = sumCells.vcaFeeRow ? round2(sv(6)) : 0;
+    // VCA count: stored by the VCA direction run in vcaFeeRow+1; used to compute the effective rate.
+    const vcaStoredCount = sv(9);
     // Interbank/intrabank: prefer SUMMARY stored counts (written by blank-sheet runs);
     // fall back to scanning DISBURSE!E:E + K:K for old template-based reports.
     const summaryInterbankCount = sv(7);
@@ -2828,7 +2831,11 @@ app.post("/build-billing", async (req, res) => {
       ? round2(disburseTotalFee / Math.max(invoiceDisburseCount, 1))
       : rules.disburse.interbank;
     const intrabankRate = hasPerTxnDisburse ? interbankRate : rules.disburse.intrabank;
-    const vcaRate = rules.vca(1, null);
+    // Effective VCA rate: use actual stored count so the invoice shows the correct unit price
+    // regardless of fee type (flat, tiered_amount_count, tiered_pct, rules, etc.).
+    const vcaRate = (vcaTotalFee > 0 && vcaStoredCount > 0)
+      ? round2(vcaTotalFee / vcaStoredCount)
+      : rules.vca(1, null);
     const pdfBuffer = await generateInvoiceFromTemplate({
       billingFolderId: dateFolder.id,
       invoiceNumber: effectiveInvoiceNumber,
