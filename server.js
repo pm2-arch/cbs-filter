@@ -38,7 +38,7 @@ const CBS_MAIN_FOLDER_ID = process.env.CBS_MAIN_FOLDER_ID || "1Dl38eXZ7b9YjdBKcK
 // Values-only templates (formulas removed from the report; invoice keeps its safe
 // Total/Amount-Due sum-formulas). Both are .xlsx uploads → converted to native Sheets on copy.
 const BILLING_TEMPLATE_ID = process.env.BILLING_TEMPLATE_ID || "15BdYOpn4tUIEk3AB4xWU_WgLGYhbsEH3";
-const INVOICE_TEMPLATE_ID = process.env.INVOICE_TEMPLATE_ID || "1wcZqlCUUBR6rhdf_iRSSj7uGjVjfvOzG";
+const INVOICE_TEMPLATE_ID = process.env.INVOICE_TEMPLATE_ID || "185GbTc1LY6eXQEPEyyrJz6ioT284at4U9-EjawuUNqU";
 const BILLING_PARENT_FOLDER_ID = process.env.BILLING_PARENT_FOLDER_ID || "12ZCC-rS-wplcT3anilQhCNzhz5NBqgzq";
 
 const db = new Firestore({ projectId: "onyx-drive-bridge" });
@@ -1322,14 +1322,13 @@ async function generateInvoiceFromTemplate({
 }) {
   const { drive, sheets } = await getClients();
 
-  // 1. Copy XLSX template → native Google Sheets (MIME conversion preserves logo/branding).
-  // Place in billingFolderId (Shared Drive) so the SA (Content Manager) can create it.
+  // 1. Copy native Sheets template into the billing folder (Shared Drive).
+  // Template is already a native Google Sheet (converted once via convert-template.js).
   // SA must have Manager role on the Shared Drive to permanently delete in the finally block.
   const copy = await withRetry(() => drive.files.copy({
     fileId: INVOICE_TEMPLATE_ID,
     requestBody: {
       name: `_inv_tmp_${invoiceNumber}`,
-      mimeType: "application/vnd.google-apps.spreadsheet",
       parents: [billingFolderId],
     },
     supportsAllDrives: true,
