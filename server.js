@@ -1383,11 +1383,13 @@ async function generateInvoiceFromTemplate({
         vcaCount, vcaRate, vcaTotalFee,
       );
     }
-    addItem(
-      `${invoicePrefix}-QRPH`,
-      `Subscription ID ${invoicePrefix}-QRPH- ${subscriptionDateText}`,
-      qrphCount, qrphRate, qrphTotalFee,
-    );
+    if (qrphTotalFee > 0) {
+      addItem(
+        `${invoicePrefix}-QRPH`,
+        `Subscription ID ${invoicePrefix}-QRPH- ${subscriptionDateText}`,
+        qrphCount, qrphRate, qrphTotalFee,
+      );
+    }
     // Topjuantech: merge interbank + intrabank into one line — same rate (₱5), and the
     // invoice template only has 3 slots (VCA + QRPH already consume 2), so a separate
     // intrabank line would overflow and be silently dropped.
@@ -2769,8 +2771,8 @@ app.post("/build-billing", async (req, res) => {
     // is still correct because it comes from the in-memory computation, not from Sheets.
     const qrphTotalFee   = direction === "incoming" ? round2(qrphFee)    : round2(sv(0));
     const qrphCount      = direction === "incoming" ? matches.length      : sv(1);
-    const disburseTotalFee = direction === "disburse" ? round2(disburseFee) : round2(sv(2));
-    const disburseCount  = direction === "disburse" ? matches.length      : sv(3);
+    const disburseTotalFee = direction === "outgoing" ? round2(disburseFee) : round2(sv(2));
+    const disburseCount  = direction === "outgoing" ? matches.length      : sv(3);
     const eValues = (sumRead.data.valueRanges[4]?.values || []).flat();
     const kValues = (sumRead.data.valueRanges[5]?.values || []).flat();
     // VCA total: current VCA run uses local vcaFee; other directions read from SUMMARY.
@@ -2852,7 +2854,7 @@ app.post("/build-billing", async (req, res) => {
     console.log(`[INV DEBUG] partner=${partner.id} direction=${direction} qrphFee=${qrphFee} vcaFee=${vcaFee} disburseFee=${disburseFee} matchedRows=${matches.length}`);
     const inv_qrphFee     = direction === "incoming" ? round2(qrphFee)    : 0;
     const inv_vcaFee      = direction === "vca"      ? round2(vcaFee)     : 0;
-    const inv_disburseFee = direction === "disburse" ? round2(disburseFee) : 0;
+    const inv_disburseFee = direction === "outgoing" ? round2(disburseFee) : 0;
     const inv_grandTotal  = round2(inv_qrphFee + inv_vcaFee + inv_disburseFee);
     console.log(`[INV DEBUG] inv_qrphFee=${inv_qrphFee} inv_vcaFee=${inv_vcaFee} inv_disburseFee=${inv_disburseFee} inv_grandTotal=${inv_grandTotal}`);
     const inv_amountDue   = round2(inv_grandTotal + lessAmount);
@@ -2861,14 +2863,14 @@ app.post("/build-billing", async (req, res) => {
       : rules.vca(1, null);
     const inv_qrphCount     = direction === "incoming" ? matches.length : 0;
     const inv_qrphRate      = inv_qrphCount > 0 ? round2(inv_qrphFee / inv_qrphCount) : 0;
-    const inv_interbankCount = direction === "disburse" ? reportInterbankCount : 0;
-    const inv_intrabankCount = direction === "disburse" ? reportIntrabankCount : 0;
+    const inv_interbankCount = direction === "outgoing" ? reportInterbankCount : 0;
+    const inv_intrabankCount = direction === "outgoing" ? reportIntrabankCount : 0;
     const inv_disburseCount  = inv_interbankCount + inv_intrabankCount;
     const hasPerTxnDisburse  = !!(rules.disbursePerTxnFee || rules.disburseTieredCount);
-    const inv_interbankRate  = direction === "disburse"
+    const inv_interbankRate  = direction === "outgoing"
       ? (hasPerTxnDisburse ? round2(inv_disburseFee / Math.max(inv_disburseCount, 1)) : rules.disburse.interbank)
       : 0;
-    const inv_intrabankRate  = direction === "disburse"
+    const inv_intrabankRate  = direction === "outgoing"
       ? (hasPerTxnDisburse ? inv_interbankRate : rules.disburse.intrabank)
       : 0;
     const pdfBuffer = await generateInvoiceFromTemplate({
