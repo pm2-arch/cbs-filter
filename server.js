@@ -1317,6 +1317,7 @@ async function generateInvoiceFromTemplate({
   qrphTotalFee, qrphCount, qrphRate,
   disburseTotalFee, disburseCount,
   interbankCount, intrabankCount, interbankRate, intrabankRate,
+  needsInterbankSplit,
   grandTotal, amountDue,
   subscriptionDateText,
 }) {
@@ -1390,36 +1391,29 @@ async function generateInvoiceFromTemplate({
         qrphCount, qrphRate, qrphTotalFee,
       );
     }
-    // Topjuantech: merge interbank + intrabank into one line — same rate (₱5), and the
-    // invoice template only has 3 slots (VCA + QRPH already consume 2), so a separate
-    // intrabank line would overflow and be silently dropped.
-    console.log(`[DEBUG] invoice merge check: invoicePrefix=${invoicePrefix} interbankCount=${interbankCount} intrabankCount=${intrabankCount}`);
-    if (invoicePrefix === 'Topjuantech' && (interbankCount + intrabankCount) > 0) {
-      addItem(
-        `${invoicePrefix}-Disburse`,
-        `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
-        interbankCount + intrabankCount, interbankRate, disburseTotalFee,
-      );
-    } else {
-      if (interbankCount > 0) {
-        addItem(
-          `${invoicePrefix}-Disburse-To-Account-Interbank`,
-          `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
-          interbankCount, interbankRate, round2(interbankCount * interbankRate),
-        );
-      }
-      if (intrabankCount > 0 && interbankCount !== intrabankCount) {
-        addItem(
-          `${invoicePrefix}-Disburse-To-Account-Intrabank`,
-          `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
-          intrabankCount, intrabankRate, round2(intrabankCount * intrabankRate),
-        );
-      }
-      if (interbankCount === 0 && intrabankCount === 0 && disburseTotalFee > 0) {
+    if (disburseTotalFee > 0) {
+      if (needsInterbankSplit) {
+        // Magic Payment only: separate interbank / intrabank lines (different rates).
+        if (interbankCount > 0) {
+          addItem(
+            `${invoicePrefix}-Disburse-To-Account-Interbank`,
+            `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
+            interbankCount, interbankRate, round2(interbankCount * interbankRate),
+          );
+        }
+        if (intrabankCount > 0) {
+          addItem(
+            `${invoicePrefix}-Disburse-To-Account-Intrabank`,
+            `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
+            intrabankCount, intrabankRate, round2(intrabankCount * intrabankRate),
+          );
+        }
+      } else {
+        // All other partners: single consolidated disburse line.
         addItem(
           `${invoicePrefix}-Disburse-To-Account`,
           `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
-          disburseCount, interbankRate, disburseTotalFee,
+          disburseCount, round2(disburseTotalFee / Math.max(disburseCount, 1)), disburseTotalFee,
         );
       }
     }
@@ -2287,13 +2281,13 @@ app.post("/build-billing", async (req, res) => {
     stage = "classifying interbank/intrabank";
     let interbankCount = 0;
     let intrabankCount = 0;
+    const ds = partner.fees?.disburse || {};
+    // Only Magic Payment has different interbank/intrabank rates — all others use a single disburse line.
+    const needsInterbankSplit = ds.type === "flat_rates" &&
+      typeof ds.interbank === "number" && typeof ds.intrabank === "number" &&
+      ds.interbank !== ds.intrabank;
     if (direction === "outgoing") {
-      const ds = partner.fees?.disburse || {};
-      const needsSplit = ds.type === "flat_rates" &&
-        typeof ds.interbank === "number" && typeof ds.intrabank === "number" &&
-        ds.interbank !== ds.intrabank;
-
-      if (needsSplit) {
+      if (needsInterbankSplit) {
         const kIdx = sourceHeader.findIndex((h) =>
           /recipient\s+institution\s+code/i.test(String(h || ""))
         );
@@ -2718,9 +2712,12 @@ app.post("/build-billing", async (req, res) => {
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow + 2}`, values: [[disburseVolume]] });
         sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`, values: [[rules.disburseNote || rules.disburse.interbank]] });
       }
-      // Store interbank/intrabank counts so pdfkit invoice can split the disburse line
-      if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[interbankCount]] });
-      if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[intrabankCount]] });
+      // Store interbank/intrabank counts only for partners with a real split (Magic Payment).
+      // Other partners use a single consolidated disburse line — leaving these rows blank.
+      if (needsInterbankSplit) {
+        if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[interbankCount]] });
+        if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[intrabankCount]] });
+      }
     }
     if (sumUpdates.length > 0) {
       await withRetry(() => sheets.spreadsheets.values.batchUpdate({
@@ -2890,10 +2887,11 @@ app.post("/build-billing", async (req, res) => {
       disburseCount:   inv_disburseCount,
       interbankCount:  inv_interbankCount,
       intrabankCount:  inv_intrabankCount,
-      interbankRate:   inv_interbankRate,
-      intrabankRate:   inv_intrabankRate,
-      grandTotal:      inv_grandTotal,
-      amountDue:       inv_amountDue,
+      interbankRate:      inv_interbankRate,
+      intrabankRate:      inv_intrabankRate,
+      needsInterbankSplit,
+      grandTotal:         inv_grandTotal,
+      amountDue:          inv_amountDue,
       subscriptionDateText,
     });
     const billedToRanges = null; // not used in template flow
