@@ -1314,7 +1314,7 @@ async function generateInvoiceFromTemplate({
   invoiceNumber, invoiceDateText, customerId,
   billedTo, invoicePrefix, partnerHasVca,
   vcaTotalFee, vcaRate,
-  qrphTotalFee,
+  qrphTotalFee, qrphCount, qrphRate,
   disburseTotalFee, disburseCount,
   interbankCount, intrabankCount, interbankRate, intrabankRate,
   grandTotal, amountDue,
@@ -1386,7 +1386,7 @@ async function generateInvoiceFromTemplate({
     addItem(
       `${invoicePrefix}-QRPH`,
       `Subscription ID ${invoicePrefix}-QRPH- ${subscriptionDateText}`,
-      1, qrphTotalFee, qrphTotalFee,
+      qrphCount, qrphRate, qrphTotalFee,
     );
     // Topjuantech: merge interbank + intrabank into one line — same rate (₱5), and the
     // invoice template only has 3 slots (VCA + QRPH already consume 2), so a separate
@@ -2859,6 +2859,8 @@ app.post("/build-billing", async (req, res) => {
     const inv_vcaRate = (direction === "vca" && matches.length > 0)
       ? round2(inv_vcaFee / matches.length)
       : rules.vca(1, null);
+    const inv_qrphCount     = direction === "incoming" ? matches.length : 0;
+    const inv_qrphRate      = inv_qrphCount > 0 ? round2(inv_qrphFee / inv_qrphCount) : 0;
     const inv_interbankCount = direction === "disburse" ? reportInterbankCount : 0;
     const inv_intrabankCount = direction === "disburse" ? reportIntrabankCount : 0;
     const inv_disburseCount  = inv_interbankCount + inv_intrabankCount;
@@ -2880,6 +2882,8 @@ app.post("/build-billing", async (req, res) => {
       vcaTotalFee:     inv_vcaFee,
       vcaRate:         inv_vcaRate,
       qrphTotalFee:    inv_qrphFee,
+      qrphCount:       inv_qrphCount,
+      qrphRate:        inv_qrphRate,
       disburseTotalFee: inv_disburseFee,
       disburseCount:   inv_disburseCount,
       interbankCount:  inv_interbankCount,
