@@ -80,6 +80,8 @@ tr:hover td{background:#f0f4ff;}
 .tiers-table td{padding:4px 6px;border-bottom:1px solid #e0e5f0;}
 .tiers-table input{width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:.80rem;}
 .tiers-table .del-tier{background:none;border:none;color:var(--nb-red);cursor:pointer;font-size:1rem;}
+.tiers-table .tier-cond{font-size:.76rem;color:#fff;background:#2a6db5;border-radius:4px;padding:3px 8px;white-space:nowrap;font-weight:600;display:inline-block;min-width:120px;text-align:center;}
+.tiers-table .tier-cond.last{background:#1a7a4a;}
 .modal-footer{padding:16px 22px;border-top:1px solid var(--nb-border);display:flex;justify-content:flex-end;gap:10px;background:#fafbfc;border-radius:0 0 12px 12px;}
 /* Toast */
 .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;}
@@ -385,13 +387,12 @@ const FEE_TYPE_HTML = {
       <div class="form-row"><label>Cap (₱)</label><input type="number" step="0.01" min="0" class="fee-val" data-key="cap" placeholder="e.g. 7.00"/></div>
     </div>`,
   tiered_amount: `
-    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. The last tier has no upper limit.</div>
+    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. Leave the upper limit blank for the last tier (it catches everything above the previous tier).</div>
     <table class="tiers-table">
-      <thead><tr><th>If amount ≤ (₱)</th><th>Fee (₱)</th><th></th></tr></thead>
+      <thead><tr><th style="width:38%">Upper Limit (₱) — leave blank if last</th><th style="width:18%">Fee (₱)</th><th style="width:36%">Effective Condition</th><th style="width:8%"></th></tr></thead>
       <tbody id="PFXTIERS"></tbody>
     </table>
-    <button type="button" onclick="addTierRow('PFX')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
-    <div class="form-hint" style="margin-top:6px;">Leave "amount ≤" blank for the final (default) tier.</div>`,
+    <button type="button" onclick="addTierRow('PFX')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>`,
   tiered_amount_count: `
     <div class="form-grid">
       <div class="form-row"><label>Amount Threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="amtThreshold" placeholder="e.g. 600"/></div>
@@ -444,17 +445,16 @@ const DISBURSE_HTML = {
       <div class="form-row"><label>Fee if > threshold (₱)</label><input type="number" step="0.01" class="fee-val" data-key="highFee" placeholder="e.g. 6"/></div>
     </div>`,
   tiered_amount: `
-    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. The last tier has no upper limit.</div>
+    <div class="form-hint" style="margin-bottom:6px;">Define tiers from lowest to highest. Leave the upper limit blank for the last tier (it catches everything above the previous tier).</div>
     <table class="tiers-table">
-      <thead><tr><th>If amount ≤ (₱)</th><th>Fee (₱)</th><th></th></tr></thead>
+      <thead><tr><th style="width:38%">Upper Limit (₱) — leave blank if last</th><th style="width:18%">Fee (₱)</th><th style="width:36%">Effective Condition</th><th style="width:8%"></th></tr></thead>
       <tbody id="DISBTIERS"></tbody>
     </table>
-    <button type="button" onclick="addTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>
-    <div class="form-hint" style="margin-top:6px;">Leave "amount ≤" blank for the final (default) tier.</div>`,
+    <button type="button" onclick="addTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>`,
   tiered_count: `
     <div class="form-hint" style="margin-bottom:8px;">All transactions in the billing run are billed at the <strong>SAME rate</strong>, determined by the total disburse count. Define tiers lowest to highest; last tier has no upper limit.</div>
     <table class="tiers-table">
-      <thead><tr><th>If count ≤ (blank = last tier)</th><th>Fee per txn (₱)</th><th></th></tr></thead>
+      <thead><tr><th style="width:38%">Upper Count Limit — leave blank if last</th><th style="width:18%">Fee/txn (₱)</th><th style="width:36%">Effective Condition</th><th style="width:8%"></th></tr></thead>
       <tbody id="DISBCOUNTTIERS"></tbody>
     </table>
     <button type="button" onclick="addCountTierRow('DISB')" style="margin-top:6px;font-size:.78rem;background:none;border:1px dashed #aaa;border-radius:4px;padding:4px 10px;cursor:pointer;color:#555;">+ Add Tier</button>`,
@@ -479,10 +479,34 @@ function addTierRow(pfx, maxAmt, fee) {
   const tbody = document.getElementById(`${pfx}TIERS`);
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="number" step="0.01" class="tier-max" value="${maxAmt !== undefined ? maxAmt : ''}" placeholder="(blank = last tier)"/></td>
+    <td><input type="number" step="0.01" class="tier-max" value="${maxAmt !== undefined ? maxAmt : ''}" placeholder="(leave blank if this is the last tier)" oninput="refreshTierConditions('${pfx}')"/></td>
     <td><input type="number" step="0.01" class="tier-fee" value="${fee !== undefined ? fee : ''}" required/></td>
-    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
+    <td><span class="tier-cond"></span></td>
+    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove();refreshTierConditions('${pfx}')">&#10005;</button></td>`;
   tbody.appendChild(tr);
+  refreshTierConditions(pfx);
+}
+
+function refreshTierConditions(pfx) {
+  const tbody = document.getElementById(`${pfx}TIERS`);
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const fmt = v => '₱' + Number(v).toLocaleString('en-PH', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+  rows.forEach((tr, i) => {
+    const inp = tr.querySelector('.tier-max');
+    const span = tr.querySelector('.tier-cond');
+    if (!inp || !span) return;
+    const val = inp.value.trim();
+    const prev = i > 0 ? rows[i-1].querySelector('.tier-max').value.trim() : '';
+    let label, isLast = val === '';
+    if (isLast) {
+      label = prev !== '' ? `amt > ${fmt(prev)}` : `all amounts`;
+    } else {
+      label = prev !== '' ? `${fmt(prev)} < amt ≤ ${fmt(val)}` : `amt ≤ ${fmt(val)}`;
+    }
+    span.textContent = label;
+    span.className = 'tier-cond' + (isLast ? ' last' : '');
+  });
 }
 
 function addCountTierRow(pfx, maxCount, fee) {
@@ -490,10 +514,34 @@ function addCountTierRow(pfx, maxCount, fee) {
   if (!tbody) return;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="number" step="1" class="tier-max-count" value="${maxCount !== undefined ? maxCount : ''}" placeholder="(blank = last tier)"/></td>
+    <td><input type="number" step="1" class="tier-max-count" value="${maxCount !== undefined ? maxCount : ''}" placeholder="(leave blank if this is the last tier)" oninput="refreshCountTierConditions('${pfx}')"/></td>
     <td><input type="number" step="0.01" class="tier-fee" value="${fee !== undefined ? fee : ''}" required/></td>
-    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove()">&#10005;</button></td>`;
+    <td><span class="tier-cond"></span></td>
+    <td><button type="button" class="del-tier" onclick="this.closest('tr').remove();refreshCountTierConditions('${pfx}')">&#10005;</button></td>`;
   tbody.appendChild(tr);
+  refreshCountTierConditions(pfx);
+}
+
+function refreshCountTierConditions(pfx) {
+  const tbody = document.getElementById(`${pfx}COUNTTIERS`);
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const fmt = v => Number(v).toLocaleString('en-PH');
+  rows.forEach((tr, i) => {
+    const inp = tr.querySelector('.tier-max-count');
+    const span = tr.querySelector('.tier-cond');
+    if (!inp || !span) return;
+    const val = inp.value.trim();
+    const prev = i > 0 ? rows[i-1].querySelector('.tier-max-count').value.trim() : '';
+    let label, isLast = val === '';
+    if (isLast) {
+      label = prev !== '' ? `count > ${fmt(prev)} txns` : `all counts`;
+    } else {
+      label = prev !== '' ? `${fmt(prev)} < count ≤ ${fmt(val)} txns` : `count ≤ ${fmt(val)} txns`;
+    }
+    span.textContent = label;
+    span.className = 'tier-cond' + (isLast ? ' last' : '');
+  });
 }
 
 function addPctTierRow(pfx, maxAmt, pctDisplay, floor) {

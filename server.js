@@ -316,7 +316,7 @@ const PARTNER_SEED = [
   { id: "topjuantech", name: "Topjuantech Corp Inc", productId: "c43ec6d0-a4b9-4135-b1f0-72e9b89e66c1", productIds: [], invoicePrefix: "Topjuantech", customerId: "", hasVca: true, settledOnlyOutgoing: false, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "pct_floor", pct: 0.007, floor: 1.50 }, vca: { type: "flat", value: 7 }, disburse: { type: "flat_rates", interbank: 5, intrabank: 5 }, notes: { qrph: "0.7% or PHP 1.50 whichever is higher (updated Aug 15, 2026)", vca: "PHP 7 per transaction", disburse: "PHP 5 per transaction" } }, order: 4 },
   { id: "seveninfo", name: "SevenInfo Company", productId: "7ef39139-8c22-4a47-8d60-df65191dc317", productIds: [], invoicePrefix: "SevenInfo", customerId: "", hasVca: true, settledOnlyOutgoing: true, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "pct_floor_cap", pct: 0.007, floor: 0.90, cap: 7 }, vca: { type: "flat", value: 8 }, disburse: { type: "flat_rates", interbank: 3.6, intrabank: 3.6 }, notes: { qrph: "0.7%, floor PHP 0.90, cap PHP 7.00", vca: "PHP 8 per transaction", disburse: "PHP 3.60 per transaction" } }, order: 5 },
   { id: "maxjoy", name: "Maxjoy Technologies Corporation", productId: "259aeeb8-8de9-48b2-ba82-e5fae56486dd", productIds: [], invoicePrefix: "Maxjoy", customerId: "", hasVca: true, settledOnlyOutgoing: false, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "flat", value: 10 }, vca: { type: "flat", value: 10 }, disburse: { type: "flat_rates", interbank: 10, intrabank: 10 }, notes: { qrph: "PHP 10 per transaction", vca: "PHP 10 per transaction", disburse: "PHP 10 per transaction" } }, order: 6 },
-  { id: "aio", name: "AIO Solutions Inc.", productId: "05aa5b25-9291-41ee-bd24-e8d50fdd1419", productIds: ["05aa5b25-9291-41ee-bd24-e8d50fdd1419", "b97d6271-bdcf-4f03-b2e8-6959997e167c", "cb0180aa-ec29-4196-b47d-2f5c86aef7e5", "c04d319b-c45a-4f5f-9125-9b14f56ff87f"], invoicePrefix: "AIO", customerId: "", hasVca: true, settledOnlyOutgoing: false, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "tiered_amount_count", amtThreshold: 600, lowFee: 6, highFeeDefault: 10, countThreshold: 30000, highFeeAtCount: 8 }, vca: { type: "tiered_amount_count", amtThreshold: 600, lowFee: 6, highFeeDefault: 10, countThreshold: 30000, highFeeAtCount: 8 }, disburse: { type: "by_amount", amtThreshold: 500, lowFee: 4, highFee: 6 }, notes: { qrph: "PHP 6 if amt <=600; PHP 10 if >600 and run <30k txns; PHP 8 if >600 and run >=30k txns", vca: "PHP 6 if amt <=600; PHP 10 if >600 and run <30k txns; PHP 8 if >600 and run >=30k txns", disburse: "PHP 4 per txn <=500; PHP 6 per txn >500" } }, order: 7 },
+  { id: "aio", name: "AIO Solutions Inc.", productId: "05aa5b25-9291-41ee-bd24-e8d50fdd1419", productIds: ["05aa5b25-9291-41ee-bd24-e8d50fdd1419", "b97d6271-bdcf-4f03-b2e8-6959997e167c", "cb0180aa-ec29-4196-b47d-2f5c86aef7e5", "c04d319b-c45a-4f5f-9125-9b14f56ff87f"], invoicePrefix: "AIO", customerId: "", hasVca: true, settledOnlyOutgoing: false, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "tiered_amount", tiers: [{ maxAmt: 600, fee: 6 }, { maxAmt: 30000, fee: 10 }, { fee: 8 }] }, vca: { type: "tiered_amount", tiers: [{ maxAmt: 600, fee: 6 }, { maxAmt: 30000, fee: 10 }, { fee: 8 }] }, disburse: { type: "by_amount", amtThreshold: 500, lowFee: 4, highFee: 6 }, notes: { qrph: "PHP 6 if amt <=600; PHP 10 if 600<amt<=30000; PHP 8 if amt>30000", vca: "PHP 6 if amt <=600; PHP 10 if 600<amt<=30000; PHP 8 if amt>30000", disburse: "PHP 4 per txn <=500; PHP 6 per txn >500" } }, order: 7 },
   { id: "vlpay", name: "VLPay", productId: "07fd8d34-4d40-4e36-831f-f345c2df1adc", productIds: [], invoicePrefix: "VLPay", customerId: "", hasVca: true, settledOnlyOutgoing: false, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "pct_floor", pct: 0.007, floor: 1.40 }, vca: { type: "flat", value: 15 }, disburse: { type: "flat_rates", interbank: 3.5, intrabank: 3.5 }, notes: { qrph: "0.7%, floor PHP 1.40", vca: "PHP 15 per transaction", disburse: "PHP 3.50 per transaction" } }, order: 8 },
   { id: "justpayto", name: "JustPayto Philippines Corporation", productId: "18d10c21-e36a-4b73-82b5-7b727ed408f6", productIds: [], invoicePrefix: "JustPayto", customerId: "", hasVca: false, settledOnlyOutgoing: true, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "pct_floor", pct: 0.007, floor: 1.50 }, vca: { type: "zero" }, disburse: { type: "flat_rates", interbank: 3.5, intrabank: 3.5 }, notes: { qrph: "0.7%, floor PHP 1.50", vca: "No VCA charge", disburse: "PHP 3.50 per transaction" } }, order: 9 },
 ];
@@ -464,9 +464,27 @@ async function loadFromFirestore() {
   return snap.docs.map(d => ({ ...d.data() }));
 }
 
+// One-time migration: AIO's fee spec was incorrectly set to tiered_amount_count
+// (count-based threshold). Correct logic is tiered_amount (amount-based thresholds:
+// ≤600→₱6, ≤30000→₱10, >30000→₱8). Patches Firestore once, then no-ops.
+async function patchAioFeeSpec() {
+  const ref = db.collection(PARTNERS_COLLECTION).doc("aio");
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const data = snap.data();
+  if (data.fees && data.fees.qrph && data.fees.qrph.type === "tiered_amount_count") {
+    const seed = PARTNER_SEED.find(p => p.id === "aio");
+    if (seed) {
+      await ref.update({ fees: seed.fees });
+      console.log("[init] Patched AIO fee spec from tiered_amount_count to tiered_amount.");
+    }
+  }
+}
+
 async function initPartners() {
   await seedFirestoreIfEmpty();
   await patchMissingVcaConfig();
+  await patchAioFeeSpec();
   const partners = await loadFromFirestore();
   _partners = partners;
   _feeRulesMap = {};
@@ -1856,6 +1874,40 @@ app.delete("/admin/partners/:id", requireAdmin, async (req, res) => {
   }
 });
 
+// Diagnostic: show raw Firestore fees + what buildFeeRulesForPartner computes for a partner.
+app.get("/admin/partners/:id/fees-debug", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!/^[a-z0-9-]+$/.test(id)) return res.status(400).json({ ok: false, error: "Invalid partner ID" });
+    const doc = await db.collection(PARTNERS_COLLECTION).doc(id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, error: "Partner not found" });
+    const partner = doc.data();
+    const fees = partner.fees || {};
+    const rules = buildFeeRulesForPartner(partner);
+    // Describe the computed rules in human-readable form
+    const sampleAmts = [100, 500, 600, 1000, 5000];
+    const sampleCount = 100;
+    const described = {
+      qrph: { spec: fees.qrph, samples: sampleAmts.map(a => ({ amt: a, fee: rules.qrph(a, sampleCount) })) },
+      vca: { spec: fees.vca, samples: sampleAmts.map(a => ({ amt: a, fee: rules.vca(a, sampleCount) })) },
+      disburse: {
+        spec: fees.disburse,
+        hasTieredCount: !!rules.disburseTieredCount,
+        hasPerTxnFee: !!rules.disbursePerTxnFee,
+        flatRates: rules.disburse,
+        samples: rules.disburseTieredCount
+          ? [{ count: 100, rate: rules.disburseTieredCount(0, 100) }, { count: 1000, rate: rules.disburseTieredCount(0, 1000) }]
+          : rules.disbursePerTxnFee
+          ? sampleAmts.map(a => ({ amt: a, fee: rules.disbursePerTxnFee(a) }))
+          : sampleAmts.map(a => ({ amt: a, interbank: rules.disburse.interbank, intrabank: rules.disburse.intrabank })),
+      },
+    };
+    res.json({ ok: true, id, rawFees: fees, computed: described });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/list-files", async (req, res) => {
   try {
     const { folderId } = req.body || {};
@@ -2561,6 +2613,8 @@ app.post("/build-billing", async (req, res) => {
 
     // ---- Compute per-partner fees as VALUES (the report template carries no formulas) ----
     const rules = feeRules(partner);
+    const partnerFeeSpec = ((_partners || []).find(p => p.id === partner.id) || {}).fees || {};
+    console.log(`[billing-fees] partner=${partner.id} direction=${direction} feeSpec=${JSON.stringify(partnerFeeSpec)}`);
     // Detect amount column dynamically from source file header (not hardcoded index).
     // Magic CBS uses title-case "Amount" at col D (idx 3); V5/TopJuan CBS uses "cbs_amount_inward" at idx 6.
     const amtIdx = (() => {
@@ -2713,10 +2767,14 @@ app.post("/build-billing", async (req, res) => {
         sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`, values: [[rules.disburseNote || rules.disburse.interbank]] });
       }
       // Store interbank/intrabank counts only for partners with a real split (Magic Payment).
-      // Other partners use a single consolidated disburse line — leaving these rows blank.
+      // For all other partners, explicitly zero these rows — the template may have formulas
+      // that auto-calculate from DISBURSE tab column K, which would show wrong counts.
       if (needsInterbankSplit) {
         if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[interbankCount]] });
         if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[intrabankCount]] });
+      } else {
+        if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[""]] });
+        if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[""]] });
       }
     }
     if (sumUpdates.length > 0) {
@@ -2777,21 +2835,27 @@ app.post("/build-billing", async (req, res) => {
                          : sumCells.vcaFeeRow       ? round2(sv(6)) : 0;
     // VCA count: current VCA run uses matches.length directly; other directions read stored count.
     const vcaStoredCount = direction === "vca" ? matches.length : sv(9);
-    // Interbank/intrabank: prefer SUMMARY stored counts (written by blank-sheet runs);
-    // fall back to scanning DISBURSE!E:E + K:K for old template-based reports.
-    const summaryInterbankCount = sv(7);
-    const summaryIntrabankCount = sv(8);
+    // Interbank/intrabank: only meaningful for Magic Payment (needsInterbankSplit).
+    // For all other partners, force both to 0 to prevent template formulas from leaking counts.
     let reportInterbankCount, reportIntrabankCount, reportDisburseCount;
-    if (summaryInterbankCount > 0 || summaryIntrabankCount > 0) {
-      reportInterbankCount = summaryInterbankCount;
-      reportIntrabankCount = summaryIntrabankCount;
-      reportDisburseCount  = summaryInterbankCount + summaryIntrabankCount;
+    if (!needsInterbankSplit) {
+      reportInterbankCount = 0;
+      reportIntrabankCount = 0;
+      reportDisburseCount  = disburseCount;
     } else {
-      const intrabankFromCol = kValues.filter((v) => String(v || "").trim() === "CUOBPHM2XXX").length;
-      const totalFromCol     = eValues.filter((v) => typeof v === "number" && !Number.isNaN(v)).length;
-      reportIntrabankCount = intrabankFromCol;
-      reportDisburseCount  = totalFromCol;
-      reportInterbankCount = Math.max(0, totalFromCol - intrabankFromCol);
+      const summaryInterbankCount = sv(7);
+      const summaryIntrabankCount = sv(8);
+      if (summaryInterbankCount > 0 || summaryIntrabankCount > 0) {
+        reportInterbankCount = summaryInterbankCount;
+        reportIntrabankCount = summaryIntrabankCount;
+        reportDisburseCount  = summaryInterbankCount + summaryIntrabankCount;
+      } else {
+        const intrabankFromCol = kValues.filter((v) => String(v || "").trim() === "CUOBPHM2XXX").length;
+        const totalFromCol     = eValues.filter((v) => typeof v === "number" && !Number.isNaN(v)).length;
+        reportIntrabankCount = intrabankFromCol;
+        reportDisburseCount  = totalFromCol;
+        reportInterbankCount = Math.max(0, totalFromCol - intrabankFromCol);
+      }
     }
     const prevChargedTotal = subRows.length === 3
       ? (sumRead.data.valueRanges[subRowsIdx]?.values || []).flat().reduce((s, v) => s + (Number(v) || 0), 0)
