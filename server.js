@@ -1338,8 +1338,17 @@ async function generateInvoiceFromTemplate({
   const tempId = copy.data.id;
 
   try {
-    // 2. Build cell value updates
+    // 2. Verify sheet names in the copied template
+    const tempMeta = await withRetry(() => sheets.spreadsheets.get({
+      spreadsheetId: tempId,
+      fields: "sheets(properties(title))",
+    }), { label: "reading temp sheet names" });
+    const sheetTitles = (tempMeta.data.sheets || []).map(s => s.properties.title);
+    console.log(`[INV TEMPLATE] tempId=${tempId} sheetTitles=${JSON.stringify(sheetTitles)}`);
+
+    // 3. Build cell value updates
     const vcaCount = vcaRate > 0 ? Math.round(vcaTotalFee / vcaRate) : 0;
+    console.log(`[INV PARAMS] grandTotal=${grandTotal} qrphTotalFee=${qrphTotalFee} vcaTotalFee=${vcaTotalFee} disburseTotalFee=${disburseTotalFee} amountDue=${amountDue}`);
     const updates = [
       { range: "INVOICE!F4", values: [[invoiceNumber]] },
       { range: "INVOICE!F5", values: [[invoiceDateText]] },
@@ -1427,7 +1436,16 @@ async function generateInvoiceFromTemplate({
       requestBody: { valueInputOption: "USER_ENTERED", data: updates },
     }), { label: "filling invoice template cells" });
 
-    // 3. Export native Sheets → PDF (logo and branding rendered server-side by Google)
+    // Read back key cells to verify write succeeded
+    const verify = await withRetry(() => sheets.spreadsheets.values.batchGet({
+      spreadsheetId: tempId,
+      ranges: ["INVOICE!F4", "INVOICE!F6", "INVOICE!E19", "INVOICE!F19", "INVOICE!F25", "INVOICE!F26"],
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }), { label: "verifying invoice cell writes" });
+    const vv = (i) => verify.data.valueRanges[i]?.values?.[0]?.[0];
+    console.log(`[INV VERIFY] F4(invNum)=${vv(0)} F6(grandTotal)=${vv(1)} E19(unitPrice)=${vv(2)} F19(amount)=${vv(3)} F25(total)=${vv(4)} F26(amtDue)=${vv(5)}`);
+
+    // 4. Export native Sheets → PDF (logo and branding rendered server-side by Google)
     const pdfRes = await withRetry(() => drive.files.export(
       { fileId: tempId, mimeType: "application/pdf" },
       { responseType: "arraybuffer" },
@@ -2832,10 +2850,12 @@ app.post("/build-billing", async (req, res) => {
     // Invoice is direction-isolated: each PDF shows only THIS run's fees.
     // SUMMARY tab uses accumulated totals (qrphTotalFee/vcaTotalFee/disburseTotalFee) for combined reporting.
     // Invoice is computed entirely from local in-memory values — no Sheets read-back dependency.
+    console.log(`[INV DEBUG] partner=${partner.id} direction=${direction} qrphFee=${qrphFee} vcaFee=${vcaFee} disburseFee=${disburseFee} matchedRows=${matches.length}`);
     const inv_qrphFee     = direction === "incoming" ? round2(qrphFee)    : 0;
     const inv_vcaFee      = direction === "vca"      ? round2(vcaFee)     : 0;
     const inv_disburseFee = direction === "disburse" ? round2(disburseFee) : 0;
     const inv_grandTotal  = round2(inv_qrphFee + inv_vcaFee + inv_disburseFee);
+    console.log(`[INV DEBUG] inv_qrphFee=${inv_qrphFee} inv_vcaFee=${inv_vcaFee} inv_disburseFee=${inv_disburseFee} inv_grandTotal=${inv_grandTotal}`);
     const inv_amountDue   = round2(inv_grandTotal + lessAmount);
     const inv_vcaRate = (direction === "vca" && matches.length > 0)
       ? round2(inv_vcaFee / matches.length)
