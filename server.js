@@ -2829,18 +2829,27 @@ app.post("/build-billing", async (req, res) => {
     // ---- Generate invoice PDF from Google Sheets template ----
     stage = "generating invoice PDF";
     const customerId = resolvedCustomerId;
-    // For amount-tiered disburse (AIO), use a blended effective rate so the invoice total is correct.
-    const invoiceDisburseCount = reportInterbankCount + reportIntrabankCount;
-    const hasPerTxnDisburse = !!(rules.disbursePerTxnFee || rules.disburseTieredCount);
-    const interbankRate = hasPerTxnDisburse
-      ? round2(disburseTotalFee / Math.max(invoiceDisburseCount, 1))
-      : rules.disburse.interbank;
-    const intrabankRate = hasPerTxnDisburse ? interbankRate : rules.disburse.intrabank;
-    // Effective VCA rate: use actual stored count so the invoice shows the correct unit price
-    // regardless of fee type (flat, tiered_amount_count, tiered_pct, rules, etc.).
-    const vcaRate = (vcaTotalFee > 0 && vcaStoredCount > 0)
-      ? round2(vcaTotalFee / vcaStoredCount)
+    // Invoice is direction-isolated: each PDF shows only THIS run's fees.
+    // SUMMARY tab uses accumulated totals (qrphTotalFee/vcaTotalFee/disburseTotalFee) for combined reporting.
+    // Invoice is computed entirely from local in-memory values — no Sheets read-back dependency.
+    const inv_qrphFee     = direction === "incoming" ? round2(qrphFee)    : 0;
+    const inv_vcaFee      = direction === "vca"      ? round2(vcaFee)     : 0;
+    const inv_disburseFee = direction === "disburse" ? round2(disburseFee) : 0;
+    const inv_grandTotal  = round2(inv_qrphFee + inv_vcaFee + inv_disburseFee);
+    const inv_amountDue   = round2(inv_grandTotal + lessAmount);
+    const inv_vcaRate = (direction === "vca" && matches.length > 0)
+      ? round2(inv_vcaFee / matches.length)
       : rules.vca(1, null);
+    const inv_interbankCount = direction === "disburse" ? reportInterbankCount : 0;
+    const inv_intrabankCount = direction === "disburse" ? reportIntrabankCount : 0;
+    const inv_disburseCount  = inv_interbankCount + inv_intrabankCount;
+    const hasPerTxnDisburse  = !!(rules.disbursePerTxnFee || rules.disburseTieredCount);
+    const inv_interbankRate  = direction === "disburse"
+      ? (hasPerTxnDisburse ? round2(inv_disburseFee / Math.max(inv_disburseCount, 1)) : rules.disburse.interbank)
+      : 0;
+    const inv_intrabankRate  = direction === "disburse"
+      ? (hasPerTxnDisburse ? inv_interbankRate : rules.disburse.intrabank)
+      : 0;
     const pdfBuffer = await generateInvoiceFromTemplate({
       billingFolderId: dateFolder.id,
       invoiceNumber: effectiveInvoiceNumber,
@@ -2849,17 +2858,17 @@ app.post("/build-billing", async (req, res) => {
       billedTo,
       invoicePrefix,
       partnerHasVca,
-      vcaTotalFee,
-      vcaRate,
-      qrphTotalFee,
-      disburseTotalFee,
-      disburseCount,
-      interbankCount: reportInterbankCount,
-      intrabankCount: reportIntrabankCount,
-      interbankRate,
-      intrabankRate,
-      grandTotal,
-      amountDue,
+      vcaTotalFee:     inv_vcaFee,
+      vcaRate:         inv_vcaRate,
+      qrphTotalFee:    inv_qrphFee,
+      disburseTotalFee: inv_disburseFee,
+      disburseCount:   inv_disburseCount,
+      interbankCount:  inv_interbankCount,
+      intrabankCount:  inv_intrabankCount,
+      interbankRate:   inv_interbankRate,
+      intrabankRate:   inv_intrabankRate,
+      grandTotal:      inv_grandTotal,
+      amountDue:       inv_amountDue,
       subscriptionDateText,
     });
     const billedToRanges = null; // not used in template flow
@@ -2937,28 +2946,28 @@ app.post("/build-billing", async (req, res) => {
       ok: true,
       direction,
       period: periodText,
-      amountDue,
-      grandTotal,
+      amountDue: inv_amountDue,
+      grandTotal: inv_grandTotal,
       invoiceNumber: effectiveInvoiceNumber,
       invoiceNumberReused,
       reportReused,
       invoiceSheetReused: false,
       warnings,
       counts: {
-        qrph: qrphCount,
-        disburse: reportDisburseCount,
-        interbank: reportInterbankCount,
-        intrabank: reportIntrabankCount,
+        qrph: direction === "incoming" ? matches.length : 0,
+        disburse: inv_disburseCount,
+        interbank: inv_interbankCount,
+        intrabank: inv_intrabankCount,
         thisRunMatched: matches.length,
         thisRunInterbank: interbankCount,
         thisRunIntrabank: intrabankCount,
       },
       totals: {
-        qrphFee: qrphTotalFee,
-        vcaFee: vcaTotalFee,
-        disburseFee: disburseTotalFee,
-        interbankFee: reportInterbankCount * interbankRate,
-        intrabankFee: reportIntrabankCount * intrabankRate,
+        qrphFee: inv_qrphFee,
+        vcaFee: inv_vcaFee,
+        disburseFee: inv_disburseFee,
+        interbankFee: inv_interbankCount * inv_interbankRate,
+        intrabankFee: inv_intrabankCount * inv_intrabankRate,
       },
       reportFileId,
       reportUrl: `https://docs.google.com/spreadsheets/d/${reportFileId}/edit`,
