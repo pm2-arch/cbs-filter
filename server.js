@@ -1275,7 +1275,9 @@ function colLetterFromIndex(idx) { return colIndexToLetter(idx); }
 // ---------------------------------------------------------------------------
 async function initBlankSummary(sheets, fileId) {
   const rows = [
-    // Top summary (rows 1-4) — fee totals written here after each direction
+    // Row 1: Title — sumUpdates overwrites A1 with partner name, so keep blank here
+    [""],
+    // Top summary (rows 2-5) — accumulated fee totals written here after each direction
     ["VCA",      0],
     ["QRPH",     0],
     ["DISBURSE", 0],
@@ -1284,31 +1286,31 @@ async function initBlankSummary(sheets, fileId) {
     ["BILLING PERIOD"],
     [""],  // period text written here during the run
     [""],
-    // VCA detail section (rows 9-12)
+    // VCA detail section (rows 10-13)
     ["VCA"],
     ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
     ["TOTAL COUNTS",         0],
     ["TOTAL VOLUME",         0],
     [""],
-    // QRPH detail section (rows 14-17)
+    // QRPH detail section (rows 15-18)
     ["QRPH"],
     ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
     ["TOTAL COUNTS",         0],
     ["TOTAL VOLUME",         0],
     [""],
-    // DISBURSE detail section (rows 19-22)
+    // DISBURSE detail section (rows 20-23)
     ["DISBURSE"],
     ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
     ["TOTAL COUNTS",         0],
     ["TOTAL VOLUME",         0],
     [""],
-    // Interbank / intrabank counts (rows 24-25) — written during outgoing run
+    // Interbank / intrabank counts (rows 25-26) — written during outgoing run
     ["INTERBANK COUNT", 0],
     ["INTRABANK COUNT", 0],
   ];
   await withRetry(() => sheets.spreadsheets.values.update({
     spreadsheetId: fileId,
-    range: "SUMMARY!A1:C25",
+    range: "SUMMARY!A1:C26",
     valueInputOption: "RAW",
     requestBody: { values: rows },
   }), { label: "initializing blank SUMMARY structure" });
