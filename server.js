@@ -1340,6 +1340,8 @@ async function generateInvoiceFromTemplate({
   needsInterbankSplit,
   grandTotal, amountDue,
   subscriptionDateText,
+  // Tiered fee flags: when true, display as Units=1, Unit Price=total (no meaningful per-txn rate)
+  qrphIsTiered, vcaIsTiered, disburseIsTiered,
 }) {
   const { drive, sheets } = await getClients();
 
@@ -1401,14 +1403,18 @@ async function generateInvoiceFromTemplate({
       addItem(
         `${invoicePrefix}-Virtual-Collect-Account`,
         `Subscription ID ${invoicePrefix}-Virtual-Collect-Account- ${subscriptionDateText}`,
-        vcaCount, vcaRate, vcaTotalFee,
+        vcaIsTiered ? 1 : vcaCount,
+        vcaIsTiered ? vcaTotalFee : vcaRate,
+        vcaTotalFee,
       );
     }
     if (qrphTotalFee > 0) {
       addItem(
         `${invoicePrefix}-QRPH`,
         `Subscription ID ${invoicePrefix}-QRPH- ${subscriptionDateText}`,
-        qrphCount, qrphRate, qrphTotalFee,
+        qrphIsTiered ? 1 : qrphCount,
+        qrphIsTiered ? qrphTotalFee : qrphRate,
+        qrphTotalFee,
       );
     }
     if (disburseTotalFee > 0) {
@@ -1433,7 +1439,9 @@ async function generateInvoiceFromTemplate({
         addItem(
           `${invoicePrefix}-Disburse-To-Account`,
           `Subscription ID ${invoicePrefix}-Disburse ${subscriptionDateText}`,
-          disburseCount, round2(disburseTotalFee / Math.max(disburseCount, 1)), disburseTotalFee,
+          disburseIsTiered ? 1 : disburseCount,
+          disburseIsTiered ? disburseTotalFee : round2(disburseTotalFee / Math.max(disburseCount, 1)),
+          disburseTotalFee,
         );
       }
     }
@@ -2265,10 +2273,12 @@ app.post("/build-billing", async (req, res) => {
       else console.log(`[DISBURSE DIAG] All expected product codes found in matched rows.`);
     }
 
-    // Track VCA-skipped state — do NOT early-return for VCA with 0 rows.
-    // Returning early leaves stale VCA data in the SUMMARY from a previous run.
-    // Instead, let VCA continue through to the SUMMARY write stage so it writes 0s.
-    const vcaSkipped = (direction === "vca" && matches.length === 0);
+    // Track zero-match skipped state — do NOT early-return for VCA or INCOMING with 0 rows.
+    // VCA: returning early leaves stale VCA data in the SUMMARY from a previous run.
+    // INCOMING: a partner may legitimately have no QR_P2M transactions on a given day.
+    // Both continue through to the SUMMARY write stage so they write 0s and the invoice still generates.
+    const vcaSkipped      = (direction === "vca"      && matches.length === 0);
+    const incomingSkipped = (direction === "incoming" && matches.length === 0);
 
     // When VCA matches 0 rows, run a diagnostic to identify which filter is the culprit.
     // One extra file read (product-code filter only), then all subsequent counts are in-memory.
@@ -2306,7 +2316,7 @@ app.post("/build-billing", async (req, res) => {
       }
     }
 
-    if (matches.length === 0 && !vcaSkipped) {
+    if (matches.length === 0 && !vcaSkipped && !incomingSkipped) {
       return res.status(400).json({
         error: "no_matches",
         code: "mapping_review_needed",
@@ -2928,6 +2938,13 @@ app.post("/build-billing", async (req, res) => {
     const inv_intrabankRate = needsInterbankSplit
       ? (hasPerTxnDisburse ? inv_interbankRate : rules.disburse.intrabank)
       : 0;
+    // Tiered fee detection: non-flat types produce per-txn fees that vary by amount/tier,
+    // so showing Units=count with an average rate is misleading. For these, invoice shows Units=1,
+    // Unit Price=total fee (exact, not an average). Flat types (flat, flat_rates, zero) keep count display.
+    const FLAT_FEE_TYPES = new Set(['flat', 'zero', 'flat_rates']);
+    const qrphIsTiered    = !FLAT_FEE_TYPES.has(partnerFeeSpec?.qrph?.type);
+    const vcaIsTiered     = !FLAT_FEE_TYPES.has(partnerFeeSpec?.vca?.type);
+    const disburseIsTiered = !FLAT_FEE_TYPES.has((partnerFeeSpec?.disburse || {}).type);
     const pdfBuffer = await generateInvoiceFromTemplate({
       billingFolderId: dateFolder.id,
       invoiceNumber: effectiveInvoiceNumber,
@@ -2951,6 +2968,9 @@ app.post("/build-billing", async (req, res) => {
       grandTotal,
       amountDue,
       subscriptionDateText,
+      qrphIsTiered,
+      vcaIsTiered,
+      disburseIsTiered,
     });
     const billedToRanges = null; // not used in template flow
 
