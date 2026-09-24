@@ -413,6 +413,7 @@ function buildFeeRulesForPartner(partner) {
 // In-memory partner cache — loaded at startup, refreshed after admin writes.
 let _partners = null;
 let _feeRulesMap = {};
+let _initFailed = false; // set true on Firestore startup failure; causes billing/config to return 503
 
 async function seedFirestoreIfEmpty() {
   const snap = await db.collection(PARTNERS_COLLECTION).limit(1).get();
@@ -438,6 +439,31 @@ const VCA_CONFIG_DEFAULTS = {
   "vlpay":          { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
   "justpayto":      { channels: ["INSTAPAY"], transferModes: ["P2P", "QR_P2P"], requireRefCode: true },
 };
+
+// Default incomingConfig for QRPh detection (applies to hasVca partners only).
+// Hardcoded QR_P2M + INSTAPAY was used before this field was added to the schema.
+const INCOMING_CONFIG_DEFAULT = { channels: ["INSTAPAY"], transferModes: ["QR_P2M"] };
+
+async function patchMissingIncomingConfig() {
+  const snap = await db.collection(PARTNERS_COLLECTION).get();
+  const batch = db.batch();
+  let patchCount = 0;
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    if (!data.incomingConfig) {
+      batch.update(doc.ref, { incomingConfig: INCOMING_CONFIG_DEFAULT });
+      patchCount++;
+    }
+    if (data.outgoingTransferModes === undefined) {
+      batch.update(doc.ref, { outgoingTransferModes: [] });
+      patchCount++;
+    }
+  }
+  if (patchCount > 0) {
+    await batch.commit();
+    console.log(`[init] Patched incomingConfig/outgoingTransferModes for partners.`);
+  }
+}
 
 async function patchMissingVcaConfig() {
   const snap = await db.collection(PARTNERS_COLLECTION).get();
@@ -484,6 +510,7 @@ async function patchAioFeeSpec() {
 async function initPartners() {
   await seedFirestoreIfEmpty();
   await patchMissingVcaConfig();
+  await patchMissingIncomingConfig();
   await patchAioFeeSpec();
   const partners = await loadFromFirestore();
   _partners = partners;
@@ -518,6 +545,16 @@ function validatePartnerInput(body) {
     transferModes: Array.isArray(vc.transferModes) ? vc.transferModes.map(String) : ["P2P", "QR_P2P"],
     requireRefCode: vc.requireRefCode !== false,
   };
+  // INCOMING (QRPh) detection config — configurable per partner (VCA partners only)
+  const ic = (body.incomingConfig && typeof body.incomingConfig === "object") ? body.incomingConfig : {};
+  const incomingConfig = {
+    channels: Array.isArray(ic.channels) && ic.channels.length > 0 ? ic.channels.map(String) : ["INSTAPAY"],
+    transferModes: Array.isArray(ic.transferModes) && ic.transferModes.length > 0 ? ic.transferModes.map(String) : ["QR_P2M"],
+  };
+  // Outgoing transfer mode filter — empty array = no TM filter applied
+  const outgoingTransferModes = Array.isArray(body.outgoingTransferModes)
+    ? body.outgoingTransferModes.map(s => String(s).trim()).filter(v => v !== undefined && v !== null)
+    : [];
   // Mechanics notes (per direction, for documentation)
   const mn = (body.mechanicsNotes && typeof body.mechanicsNotes === "object") ? body.mechanicsNotes : {};
   const mechanicsNotes = {
@@ -535,11 +572,13 @@ function validatePartnerInput(body) {
     customerId: String(body.customerId || "").trim(),
     hasVca: !!body.hasVca,
     vcaConfig,
+    incomingConfig,
     settledOnlyOutgoing: !!body.settledOnlyOutgoing,
     excludeOutgoingPesonet: !!body.excludeOutgoingPesonet,
     outgoingExcludeReasons: Array.isArray(body.outgoingExcludeReasons)
       ? body.outgoingExcludeReasons.map(s => String(s).trim()).filter(Boolean)
       : (body.outgoingExcludeReasons ? String(body.outgoingExcludeReasons).split(",").map(s => s.trim()).filter(Boolean) : []),
+    outgoingTransferModes,
     billedTo,
     fees,
     mechanicsNotes,
@@ -547,10 +586,10 @@ function validatePartnerInput(body) {
   };
 }
 
-// Fall back to Magic Payment's rules for any unmapped partner (keeps old behavior safe).
+// Fee rules must always come from Firestore-backed _feeRulesMap. No hardcoded fallback.
 function feeRules(partner) {
   if (_feeRulesMap && _feeRulesMap[partner.id]) return _feeRulesMap[partner.id];
-  return FEE_RULES[partner.id] || FEE_RULES["magic-payment"];
+  throw new Error(`Fee rules not found for partner "${partner.id}" — partner may be missing from Firestore or fees spec is invalid`);
 }
 
 // Normalize an arbitrary billed-to object to the 6 known string fields (missing → "").
@@ -582,8 +621,8 @@ function round2(n) {
 }
 
 function getPartner(idOrCode) {
-  const list = _partners || PARTNERS;
-  return list.find(p =>
+  if (!_partners) return undefined; // Firestore not loaded — caller receives 503/400
+  return _partners.find(p =>
     p.id === idOrCode ||
     p.productId === idOrCode ||
     productCode(p) === idOrCode ||
@@ -1779,7 +1818,8 @@ app.get("/config", async (req, res) => {
   const rawEmail = String(req.headers["x-goog-authenticated-user-email"] || "");
   const email = rawEmail.replace(/^accounts\.google\.com:/, "") || null;
   await refreshPartners().catch(() => {});
-  const partnerList = _partners || PARTNERS;
+  if (!_partners) return res.status(503).json({ error: "Billing engine unavailable — partner data could not be loaded from Firestore" });
+  const partnerList = _partners;
   res.json({
     mainFolderId: CBS_MAIN_FOLDER_ID,
     billingParentFolderId: BILLING_PARENT_FOLDER_ID || null,
@@ -1983,7 +2023,8 @@ app.get("/next-invoice-number", async (req, res) => {
       const p = getPartner(String(req.query.partnerId));
       if (p) prefix = p.invoicePrefix;
     }
-    if (!prefix) prefix = (_partners || PARTNERS)[0].invoicePrefix;
+    if (!prefix && _partners && _partners.length > 0) prefix = _partners[0].invoicePrefix;
+    if (!prefix) prefix = "INV"; // safe fallback when no partner loaded
     const safePrefix = prefix.replace(/'/g, "\\'");
     const escapedForRegex = escapeRegex(prefix);
     const pattern = new RegExp(`${escapedForRegex}-(\\d{3,5})`, "i");
@@ -2050,14 +2091,21 @@ app.post("/build-billing", async (req, res) => {
       customerId: bodyCustomerId,   // new: wizard-edited Customer ID (overrides partner default)
     } = req.body || {};
 
+    // ---- Guard: Firestore must be loaded before any billing run ----
+    if (!_partners) {
+      return res.status(503).json({
+        error: "unavailable",
+        message: "Billing engine unavailable — partner data could not be loaded from Firestore. Check service logs.",
+      });
+    }
     // ---- Resolve partner from partnerId (preferred) or raw code (back-compat) ----
     const partner = partnerId
       ? getPartner(String(partnerId))
-      : (bodyCode ? getPartner(String(bodyCode)) || (_partners || PARTNERS)[0] : (_partners || PARTNERS)[0]);
+      : (bodyCode ? getPartner(String(bodyCode)) : undefined);
     if (!partner) {
       return res.status(400).json({
         error: "validation",
-        message: `Unknown partner. Send a valid partnerId (one of: ${(_partners || PARTNERS).map(p => p.id).join(", ")}).`,
+        message: `Unknown partner. Send a valid partnerId (one of: ${_partners.map(p => p.id).join(", ")}).`,
       });
     }
     const code = productCode(partner);
@@ -2174,23 +2222,41 @@ app.post("/build-billing", async (req, res) => {
     if (direction === "outgoing" && partner.settledOnlyOutgoing) {
       directionFilters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
     }
+    const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
     // PESONET outgoing = Not Applicable for Magic Payment, Hopay, Payeasy (billing spec).
     // If the CBS file has no channel column, filter is skipped (safe — no rows excluded).
     if (direction === "outgoing" && partner.excludeOutgoingPesonet) {
       directionFilters.push({ column: "channel", altColumns: ["Channel"], notEquals: "PESONET", caseSensitive: false });
     }
-    // Hopay outgoing: exclude specific error/reject reason codes (FF02, FF10, etc.) per spec.
+    // Outgoing reason code exclusion (e.g. Hopay: FF02, FF10 etc.)
     // If the CBS file has no Reason column, filter is skipped (safe — no rows excluded).
     if (direction === "outgoing" && Array.isArray(partner.outgoingExcludeReasons) && partner.outgoingExcludeReasons.length > 0) {
       directionFilters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: partner.outgoingExcludeReasons, caseSensitive: false });
     }
+    // Outgoing transfer mode filter — configurable per partner via Partner Admin → Detection Rules → Outgoing.
+    // Empty array (default) = no TM filter (all outgoing rows included regardless of transfer mode).
+    if (direction === "outgoing" && Array.isArray(partner.outgoingTransferModes) && partner.outgoingTransferModes.length > 0) {
+      directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: partner.outgoingTransferModes, caseSensitive: false });
+    }
     // For V5/TopJuan: the CBS file mixes INSTAPAY and PESONET incoming rows in one tab.
     // Incoming (QRPH): INSTAPAY only, TM = QR_P2M. PESONET incoming is not billed.
     // VCA: channel and TM rules differ by partner — see blocks below.
-    const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
     if (partnerHasVca && direction === "incoming") {
-      directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: "INSTAPAY", caseSensitive: false });
-      directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: "QR_P2M", caseSensitive: false });
+      // Use Firestore-stored incomingConfig (set via Partner Admin → Detection Rules → QRPh section).
+      // Defaults to INSTAPAY + QR_P2M if not yet configured. Patched by patchMissingIncomingConfig() at startup.
+      const ic = (partner.incomingConfig && typeof partner.incomingConfig === "object") ? partner.incomingConfig : {};
+      const icChannels = Array.isArray(ic.channels) && ic.channels.length > 0 ? ic.channels : ["INSTAPAY"];
+      const icTm       = Array.isArray(ic.transferModes) && ic.transferModes.length > 0 ? ic.transferModes : ["QR_P2M"];
+      if (icChannels.length === 1) {
+        directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: icChannels[0], caseSensitive: false });
+      } else {
+        directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: icChannels, caseSensitive: false });
+      }
+      if (icTm.length === 1) {
+        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: icTm[0], caseSensitive: false });
+      } else {
+        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: icTm, caseSensitive: false });
+      }
     }
     if (partnerHasVca && direction === "vca") {
       // Fully data-driven: all VCA detection rules come from vcaConfig stored in Firestore.
@@ -2625,7 +2691,7 @@ app.post("/build-billing", async (req, res) => {
 
     // ---- Compute per-partner fees as VALUES (the report template carries no formulas) ----
     const rules = feeRules(partner);
-    const partnerFeeSpec = ((_partners || []).find(p => p.id === partner.id) || {}).fees || {};
+    const partnerFeeSpec = (_partners.find(p => p.id === partner.id) || {}).fees || {};
     console.log(`[billing-fees] partner=${partner.id} direction=${direction} feeSpec=${JSON.stringify(partnerFeeSpec)}`);
     // Detect amount column dynamically from source file header (not hardcoded index).
     // Magic CBS uses title-case "Amount" at col D (idx 3); V5/TopJuan CBS uses "cbs_amount_inward" at idx 6.
@@ -3182,13 +3248,10 @@ app.post("/filter", authMiddleware, async (req, res) => {
   try {
     await initPartners();
   } catch (err) {
-    console.error("[WARN] Firestore partner init failed, falling back to hardcoded:", err.message);
-    _partners = PARTNERS;
-    _feeRulesMap = {};
-    for (const p of PARTNERS) {
-      const seed = PARTNER_SEED.find(s => s.id === p.id);
-      _feeRulesMap[p.id] = seed ? buildFeeRulesForPartner(seed) : (FEE_RULES[p.id] || FEE_RULES["magic-payment"]);
-    }
+    console.error("[FATAL] Firestore partner init failed — billing engine unavailable:", err.message);
+    _initFailed = true;
+    // DO NOT fall back to hardcoded PARTNERS. Billing runs must use Firestore as sole
+    // source of truth. Any request that requires partner data will return HTTP 503.
   }
   app.listen(PORT, () => {
     console.log(`cbs-filter-service listening on port ${PORT}`);

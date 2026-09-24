@@ -274,14 +274,26 @@ tr:hover td{background:#f0f4ff;}
 
         <!-- QRPh -->
         <div class="fee-block">
-          <h4>QRPh — Incoming (QR_P2M)</h4>
-          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Standard criteria used to identify a QRPh transaction in the CBS file.</p>
-          <div class="rule-box">
-            <div class="rule-row"><span class="rule-key">Channel</span><span class="rule-val"><span class="rtag">INSTAPAY</span></span></div>
-            <div class="rule-row"><span class="rule-key">Transfer Mode</span><span class="rule-val"><span class="rtag">QR_P2M</span></span></div>
-            <div class="rule-row"><span class="rule-key">Status</span><span class="rule-val"><span class="rtag">SETTLED</span></span></div>
-          </div>
+          <h4>QRPh — Incoming</h4>
+          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Configure which transactions count as QRPh incoming for this partner. Status is always SETTLED.</p>
           <div class="form-row">
+            <label>Channels that qualify as QRPh</label>
+            <div style="display:flex;gap:20px;margin-top:4px;">
+              <label class="check-row"><input type="checkbox" id="qrph-ch-instapay" value="INSTAPAY" checked/> INSTAPAY</label>
+              <label class="check-row"><input type="checkbox" id="qrph-ch-pesonet" value="PESONET"/> PESONET</label>
+            </div>
+          </div>
+          <div class="form-row" style="margin-top:8px;">
+            <label>Transfer Modes that qualify as QRPh</label>
+            <div style="display:flex;gap:20px;margin-top:4px;flex-wrap:wrap;">
+              <label class="check-row"><input type="checkbox" id="qrph-tm-qrp2m" value="QR_P2M" checked/> QR_P2M</label>
+              <label class="check-row"><input type="checkbox" id="qrph-tm-p2p" value="P2P"/> P2P</label>
+              <label class="check-row"><input type="checkbox" id="qrph-tm-qrp2p" value="QR_P2P"/> QR_P2P</label>
+              <label class="check-row"><input type="checkbox" id="qrph-tm-blank" value=""/> Blank / Empty TM</label>
+            </div>
+          </div>
+          <div class="form-hint" style="margin-top:8px;">Only applies when VCA billing is enabled (VCA partners need QRPh/VCA split by transfer mode).</div>
+          <div class="form-row" style="margin-top:8px;">
             <label>Notes / Remarks</label>
             <input type="text" id="mech-qrph-note" placeholder="e.g. Standard QRPh criteria, no exceptions"/>
           </div>
@@ -330,6 +342,16 @@ tr:hover td{background:#f0f4ff;}
             </div>
           </div>
           <label class="check-row" style="margin-top:8px;"><input type="checkbox" id="f-excludeOutgoingPesonet"/> Exclude rows where Channel = PESONET</label>
+          <div class="form-row" style="margin-top:10px;">
+            <label>Transfer Mode Filter <span style="font-size:.75rem;color:#888;">(leave all unchecked = include all transfer modes)</span></label>
+            <div style="display:flex;gap:20px;margin-top:4px;flex-wrap:wrap;">
+              <label class="check-row"><input type="checkbox" id="out-tm-p2p" value="P2P"/> P2P</label>
+              <label class="check-row"><input type="checkbox" id="out-tm-qrp2p" value="QR_P2P"/> QR_P2P</label>
+              <label class="check-row"><input type="checkbox" id="out-tm-qrp2m" value="QR_P2M"/> QR_P2M</label>
+              <label class="check-row"><input type="checkbox" id="out-tm-blank" value=""/> Blank / Empty TM</label>
+            </div>
+            <div class="form-hint">Only outgoing rows with these transfer modes will be included. If none are checked, all rows pass (no TM filter).</div>
+          </div>
           <div class="form-row" style="margin-top:10px;">
             <label>Exclude Reason Codes (comma-separated)</label>
             <input type="text" id="f-outgoingExcludeReasons" placeholder="e.g. FF02, FF10, PAYMENT HUB GATEWAY ERROR"/>
@@ -899,10 +921,26 @@ function openEdit(id) {
   document.getElementById('vca-tm-qrp2p').checked = vcTm.includes('QR_P2P');
   document.getElementById('vca-tm-blank').checked = vcTm.includes('');
   document.getElementById('vca-requireRef').checked = vc.requireRefCode !== false;
+  // QRPh incoming config
+  const ic = p.incomingConfig || {};
+  const icCh = ic.channels || ['INSTAPAY'];
+  const icTm = ic.transferModes || ['QR_P2M'];
+  document.getElementById('qrph-ch-instapay').checked = icCh.includes('INSTAPAY');
+  document.getElementById('qrph-ch-pesonet').checked = icCh.includes('PESONET');
+  document.getElementById('qrph-tm-qrp2m').checked = icTm.includes('QR_P2M');
+  document.getElementById('qrph-tm-p2p').checked = icTm.includes('P2P');
+  document.getElementById('qrph-tm-qrp2p').checked = icTm.includes('QR_P2P');
+  document.getElementById('qrph-tm-blank').checked = icTm.includes('');
   // Outgoing
   document.getElementById('f-excludeOutgoingPesonet').checked = !!p.excludeOutgoingPesonet;
   document.getElementById('f-outgoingExcludeReasons').value = (p.outgoingExcludeReasons || []).join(', ');
   document.getElementById(p.settledOnlyOutgoing ? 'out-radio-settled' : 'out-radio-all').checked = true;
+  // Outgoing transfer modes
+  const outTm = p.outgoingTransferModes || [];
+  document.getElementById('out-tm-p2p').checked = outTm.includes('P2P');
+  document.getElementById('out-tm-qrp2p').checked = outTm.includes('QR_P2P');
+  document.getElementById('out-tm-qrp2m').checked = outTm.includes('QR_P2M');
+  document.getElementById('out-tm-blank').checked = outTm.includes('');
   // Mechanics notes
   const mn = p.mechanicsNotes || {};
   document.getElementById('mech-qrph-note').value = mn.qrph || '';
@@ -931,17 +969,27 @@ function openEdit(id) {
 function closeEdit() { document.getElementById('editOverlay').classList.remove('open'); }
 
 function clearForm() {
-  ['f-id','f-name','f-productId','f-invoicePrefix','f-customerId','f-productIds','f-outgoingExcludeReasons',
+  ['f-id','f-name','f-productId','f-invoicePrefix','f-customerId','f-productIds','f-outgoingExcludeReasons','mech-qrph-note',
    'bt-contact','bt-company','bt-address1','bt-address2','bt-email','qrph-note','vca-note','disburse-note'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   document.getElementById('bt-country').value = 'Philippines';
+  // VCA defaults (enable instapay, p2p, qrp2p, requireRef)
   ['f-hasVca','f-excludeOutgoingPesonet','vca-ch-instapay','vca-tm-p2p','vca-tm-qrp2p','vca-requireRef'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.checked = id === 'vca-ch-instapay' || id === 'vca-tm-p2p' || id === 'vca-tm-qrp2p' || id === 'vca-requireRef'; // default on
+    if (el) el.checked = id === 'vca-ch-instapay' || id === 'vca-tm-p2p' || id === 'vca-tm-qrp2p' || id === 'vca-requireRef';
   });
   ['vca-ch-pesonet','vca-tm-blank'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  // QRPh incoming defaults (instapay + QR_P2M only)
+  document.getElementById('qrph-ch-instapay').checked = true;
+  document.getElementById('qrph-ch-pesonet').checked = false;
+  document.getElementById('qrph-tm-qrp2m').checked = true;
+  document.getElementById('qrph-tm-p2p').checked = false;
+  document.getElementById('qrph-tm-qrp2p').checked = false;
+  document.getElementById('qrph-tm-blank').checked = false;
+  // Outgoing TM defaults (all unchecked = no filter)
+  ['out-tm-p2p','out-tm-qrp2p','out-tm-qrp2m','out-tm-blank'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
   document.getElementById('out-radio-all').checked = true;
   toggleVcaConfig();
   ['mech-qrph-note','mech-vca-note','mech-out-note','mech-intl-note'].forEach(id => {
@@ -1002,8 +1050,26 @@ async function savePartner() {
         ].filter(v => v !== null),
         requireRefCode: document.getElementById('vca-requireRef').checked,
       },
+      incomingConfig: {
+        channels: [
+          document.getElementById('qrph-ch-instapay').checked ? 'INSTAPAY' : null,
+          document.getElementById('qrph-ch-pesonet').checked ? 'PESONET' : null,
+        ].filter(v => v !== null),
+        transferModes: [
+          document.getElementById('qrph-tm-qrp2m').checked ? 'QR_P2M' : null,
+          document.getElementById('qrph-tm-p2p').checked ? 'P2P' : null,
+          document.getElementById('qrph-tm-qrp2p').checked ? 'QR_P2P' : null,
+          document.getElementById('qrph-tm-blank').checked ? '' : null,
+        ].filter(v => v !== null),
+      },
       settledOnlyOutgoing: document.getElementById('out-radio-settled').checked,
       excludeOutgoingPesonet: document.getElementById('f-excludeOutgoingPesonet').checked,
+      outgoingTransferModes: [
+        document.getElementById('out-tm-p2p').checked ? 'P2P' : null,
+        document.getElementById('out-tm-qrp2p').checked ? 'QR_P2P' : null,
+        document.getElementById('out-tm-qrp2m').checked ? 'QR_P2M' : null,
+        document.getElementById('out-tm-blank').checked ? '' : null,
+      ].filter(v => v !== null),
       outgoingExcludeReasons: document.getElementById('f-outgoingExcludeReasons').value.split(',').map(s => s.trim()).filter(Boolean),
       mechanicsNotes: {
         qrph: document.getElementById('mech-qrph-note').value.trim(),
