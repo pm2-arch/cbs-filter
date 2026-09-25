@@ -149,8 +149,7 @@ tr:hover td{background:#f0f4ff;}
     <div class="modal-body">
       <div class="tabs">
         <div class="tab active" onclick="switchTab('info')">Partner Info</div>
-        <div class="tab" onclick="switchTab('rules')">Detection Rules</div>
-        <div class="tab" onclick="switchTab('fees')">Fee Rules</div>
+        <div class="tab" onclick="switchTab('directions')">Directions</div>
       </div>
 
       <!-- Info tab -->
@@ -200,145 +199,13 @@ tr:hover td{background:#f0f4ff;}
         </div>
       </div>
 
-      <!-- Fees tab -->
-      <div class="tab-panel" id="tab-fees">
-        <!-- QRPh -->
-        <div class="fee-block">
-          <h4>QRPh Fee (QR_P2M incoming)</h4>
-          <div class="form-row">
-            <label>Fee Type</label>
-            <select id="qrph-type" onchange="renderFeeFields('qrph')">
-              <option value="zero">Zero — No fee</option>
-              <option value="flat">Flat — Fixed ₱X per transaction</option>
-              <option value="pct_floor">% + Floor — max(amt × rate, floor)</option>
-              <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
-              <option value="tiered_amount">Tiered by Amount</option>
-              <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
-              <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
-              <option value="rules">Fee Rules — multiple conditions with + button</option>
-            </select>
-          </div>
-          <div class="fee-type-fields" id="qrph-fields"></div>
-          <div class="form-row" style="margin-top:10px;">
-            <label>Fee Note (shown in SUMMARY sheet)</label>
-            <input type="text" id="qrph-note" placeholder="e.g. 0.7% or PHP 1 whichever is higher"/>
-          </div>
+      <!-- Directions tab -->
+      <div class="tab-panel" id="tab-directions">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0;">Directions</h3>
+          <button class="btn btn-secondary btn-sm" onclick="addDirection()">+ Add Direction</button>
         </div>
-
-        <!-- VCA -->
-        <div class="fee-block">
-          <h4>VCA Fee (P2P / QR_P2P incoming)</h4>
-          <div class="form-row">
-            <label>Fee Type</label>
-            <select id="vca-type" onchange="renderFeeFields('vca')">
-              <option value="zero">Zero — No fee (VCA N/A)</option>
-              <option value="flat">Flat — Fixed ₱X per transaction</option>
-              <option value="pct_floor">% + Floor — max(amt × rate, floor)</option>
-              <option value="pct_floor_cap">% + Floor + Cap — min(max(amt × rate, floor), cap)</option>
-              <option value="tiered_amount">Tiered by Amount</option>
-              <option value="tiered_amount_count">Tiered by Amount + Run Count (AIO-style)</option>
-              <option value="tiered_pct">Tiered Percentage — different % per amount range</option>
-              <option value="rules">Fee Rules — multiple conditions with + button</option>
-            </select>
-          </div>
-          <div class="fee-type-fields" id="vca-fields"></div>
-          <div class="form-row" style="margin-top:10px;">
-            <label>Fee Note</label>
-            <input type="text" id="vca-note" placeholder="e.g. PHP 8 per transaction"/>
-          </div>
-        </div>
-
-        <!-- Disburse -->
-        <div class="fee-block">
-          <h4>Disburse Fee (outgoing)</h4>
-          <div class="form-row">
-            <label>Fee Type</label>
-            <select id="disburse-type" onchange="renderDisburseFields()">
-              <option value="flat_rates">Flat Rates — separate interbank / intrabank</option>
-              <option value="by_amount">By Amount — fee depends on transaction amount (AIO-style)</option>
-              <option value="tiered_amount">Tiered by Amount — flat fee per amount range</option>
-              <option value="tiered_count">Tiered by Count — all txns same rate based on run volume</option>
-              <option value="rules">Fee Rules — multiple conditions with + button</option>
-            </select>
-          </div>
-          <div class="fee-type-fields" id="disburse-fields"></div>
-          <div class="form-row" style="margin-top:10px;">
-            <label>Fee Note</label>
-            <input type="text" id="disburse-note" placeholder="e.g. PHP 3.5 per transaction"/>
-          </div>
-        </div>
-      </div>
-
-      <!-- Detection Rules tab -->
-      <div class="tab-panel" id="tab-rules">
-
-        <!-- VCA Enable -->
-        <div class="fee-block">
-          <h4>VCA Billing</h4>
-          <label class="check-row"><input type="checkbox" id="f-hasVca"/> <strong>Enable VCA billing for this partner</strong></label>
-          <div class="form-hint" style="margin-top:6px;">When enabled, incoming transactions are split by transfer mode into QRPh and VCA billing categories, and a VCA tab is included in the billing report.</div>
-        </div>
-
-        <!-- Detection Rules -->
-        <div class="fee-block">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <h4 style="margin:0;">Detection Rules</h4>
-            <button type="button" class="btn btn-secondary" onclick="openAddRule()" style="font-size:.8rem;padding:4px 12px;">+ Add Rule</button>
-          </div>
-          <p style="font-size:.78rem;color:#666;margin-bottom:10px;">Rules filter CBS rows per direction during billing. Applied in order. SETTLED status for Incoming/VCA is always automatic.</p>
-          <div id="rulesList"></div>
-          <div id="noRulesMsg" style="font-size:.8rem;color:#aaa;font-style:italic;padding:6px 0;">No rules configured.</div>
-        </div>
-
-        <!-- Add Rule Form (shown on demand) -->
-        <div class="fee-block" id="addRuleForm" style="display:none;border:2px dashed #2e6ee1;">
-          <h4 style="margin-bottom:10px;">Add Detection Rule</h4>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
-            <div class="form-row" style="margin:0;">
-              <label>Rule Type</label>
-              <select id="newRuleType" onchange="onNewRuleTypeChange()">
-                <option value="">— select type —</option>
-              </select>
-            </div>
-            <div class="form-row" style="margin:0;">
-              <label>Direction</label>
-              <select id="newRuleDir">
-                <option value="">— select direction —</option>
-                <option value="incoming">Incoming (QRPh)</option>
-                <option value="vca">VCA</option>
-                <option value="outgoing">Outgoing (Disburse)</option>
-              </select>
-            </div>
-          </div>
-          <div id="newRuleDesc" style="font-size:.78rem;color:#555;margin-bottom:8px;"></div>
-          <div id="newRuleParamsWrap"></div>
-          <div style="display:flex;gap:8px;margin-top:10px;">
-            <button type="button" class="btn btn-primary" onclick="confirmAddRule()" style="font-size:.8rem;padding:4px 14px;">Add Rule</button>
-            <button type="button" class="btn btn-secondary" onclick="cancelAddRule()" style="font-size:.8rem;padding:4px 14px;">Cancel</button>
-          </div>
-        </div>
-
-        <!-- Notes / Remarks -->
-        <div class="fee-block">
-          <h4>Notes / Remarks</h4>
-          <div class="form-row">
-            <label>QRPh Mechanics Note</label>
-            <input type="text" id="mech-qrph-note" placeholder="e.g. Standard QRPh criteria, no exceptions"/>
-          </div>
-          <div class="form-row" style="margin-top:8px;">
-            <label>VCA Mechanics Note</label>
-            <input type="text" id="mech-vca-note" placeholder="e.g. P2P via INSTAPAY, ref code required"/>
-          </div>
-          <div class="form-row" style="margin-top:8px;">
-            <label>Outgoing Mechanics Note</label>
-            <input type="text" id="mech-out-note" placeholder="e.g. SETTLED only, exclude PESONET channel"/>
-          </div>
-          <div class="form-row" style="margin-top:8px;">
-            <label>International / Local Note</label>
-            <input type="text" id="mech-intl-note" placeholder="e.g. Standard bank code determination, no exceptions"/>
-          </div>
-        </div>
-
+        <div id="directions-list"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -773,7 +640,7 @@ function formToDisburseSpec() {
 
 // ---- Tab switching ----
 function switchTab(name) {
-  const TAB_ORDER = ['info','rules','fees'];
+  const TAB_ORDER = ['info', 'directions'];
   document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', TAB_ORDER[i] === name));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
 }
@@ -1045,6 +912,8 @@ function openAdd() {
   document.getElementById('f-id').disabled = false;
   clearForm();
   renderFeeFields('qrph'); renderFeeFields('vca'); renderDisburseFields();
+  currentDirections = [];
+  renderDirectionList();
   switchTab('info');
   document.getElementById('editOverlay').classList.add('open');
 }
@@ -1065,27 +934,31 @@ function openEdit(id) {
   // Detection Rules tab fields
   document.getElementById('f-hasVca').checked = !!p.hasVca;
   loadRulesFromPartner(p);
-  // Mechanics notes
+  loadDirectionsFromPartner(p);
+  // Mechanics notes (guarded — elements may not exist if tabs were removed)
   const mn = p.mechanicsNotes || {};
-  document.getElementById('mech-qrph-note').value = mn.qrph || '';
-  document.getElementById('mech-vca-note').value = mn.vca || '';
-  document.getElementById('mech-out-note').value = mn.outgoing || '';
-  document.getElementById('mech-intl-note').value = mn.intl || '';
+  const _sv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  _sv('mech-qrph-note', mn.qrph || '');
+  _sv('mech-vca-note', mn.vca || '');
+  _sv('mech-out-note', mn.outgoing || '');
+  _sv('mech-intl-note', mn.intl || '');
   const bt = p.billedTo || {};
-  document.getElementById('bt-contact').value = bt.contact || '';
-  document.getElementById('bt-company').value = bt.company || '';
-  document.getElementById('bt-address1').value = bt.address1 || '';
-  document.getElementById('bt-address2').value = bt.address2 || '';
-  document.getElementById('bt-country').value = bt.country || 'Philippines';
-  document.getElementById('bt-email').value = bt.email || '';
-  // Fees
+  _sv('bt-contact', bt.contact || '');
+  _sv('bt-company', bt.company || '');
+  _sv('bt-address1', bt.address1 || '');
+  _sv('bt-address2', bt.address2 || '');
+  _sv('bt-country', bt.country || 'Philippines');
+  _sv('bt-email', bt.email || '');
+  // Fees (guarded)
   const fees = p.fees || {};
-  specToForm('qrph', fees.qrph || { type: 'zero' });
-  specToForm('vca', fees.vca || { type: 'zero' });
-  disbSpecToForm(fees.disburse || { type: 'flat_rates', interbank: 0, intrabank: 0 });
-  document.getElementById('qrph-note').value = (fees.notes && fees.notes.qrph) || '';
-  document.getElementById('vca-note').value = (fees.notes && fees.notes.vca) || '';
-  document.getElementById('disburse-note').value = (fees.notes && fees.notes.disburse) || '';
+  if (document.getElementById('qrph-type')) {
+    specToForm('qrph', fees.qrph || { type: 'zero' });
+    specToForm('vca', fees.vca || { type: 'zero' });
+    disbSpecToForm(fees.disburse || { type: 'flat_rates', interbank: 0, intrabank: 0 });
+    _sv('qrph-note', (fees.notes && fees.notes.qrph) || '');
+    _sv('vca-note', (fees.notes && fees.notes.vca) || '');
+    _sv('disburse-note', (fees.notes && fees.notes.disburse) || '');
+  }
   switchTab('info');
   document.getElementById('editOverlay').classList.add('open');
 }
@@ -1094,21 +967,22 @@ function closeEdit() { document.getElementById('editOverlay').classList.remove('
 
 function clearForm() {
   ['f-id','f-name','f-productId','f-invoicePrefix','f-customerId','f-productIds',
-   'bt-contact','bt-company','bt-address1','bt-address2','bt-email','qrph-note','vca-note','disburse-note'].forEach(id => {
+   'bt-contact','bt-company','bt-address1','bt-address2','bt-email','qrph-note','vca-note','disburse-note',
+   'mech-qrph-note','mech-vca-note','mech-out-note','mech-intl-note'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  document.getElementById('bt-country').value = 'Philippines';
-  document.getElementById('f-hasVca').checked = false;
+  const btCountry = document.getElementById('bt-country'); if (btCountry) btCountry.value = 'Philippines';
+  const hasVca = document.getElementById('f-hasVca'); if (hasVca) hasVca.checked = false;
   // Reset detection rules
   currentRules = [];
-  renderRuleList();
-  cancelAddRule();
-  ['mech-qrph-note','mech-vca-note','mech-out-note','mech-intl-note'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
+  if (typeof renderRuleList === 'function') renderRuleList();
+  if (typeof cancelAddRule === 'function') cancelAddRule();
+  // Reset type selects (guarded — elements may not exist if tab was removed)
+  ['qrph-type','vca-type','disburse-type'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = id === 'disburse-type' ? 'flat_rates' : 'zero';
   });
-  ['qrph-type','vca-type'].forEach(id => document.getElementById(id).value = 'zero');
-  document.getElementById('disburse-type').value = 'flat_rates';
 }
 
 function onNameInput() {
@@ -1134,41 +1008,45 @@ async function savePartner() {
     const primaryId = document.getElementById('f-productId').value.trim();
     const allProductIds = [primaryId, ...productIdsRaw.filter(s => s !== primaryId)].filter(Boolean);
 
-    const fees = {
+    // Fees: only read from legacy fee form elements if they exist (tabs may have been removed)
+    const _qrphTypeEl = document.getElementById('qrph-type');
+    const fees = _qrphTypeEl ? {
       qrph: formToSpec('qrph'),
       vca: formToSpec('vca'),
       disburse: formToDisburseSpec(),
       notes: {
-        qrph: document.getElementById('qrph-note').value.trim(),
-        vca: document.getElementById('vca-note').value.trim(),
-        disburse: document.getElementById('disburse-note').value.trim(),
+        qrph: (document.getElementById('qrph-note') || {}).value || '',
+        vca: (document.getElementById('vca-note') || {}).value || '',
+        disburse: (document.getElementById('disburse-note') || {}).value || '',
       },
-    };
+    } : undefined;
 
+    const _gv = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
     const body = {
-      id: document.getElementById('f-id').value.trim(),
-      name: document.getElementById('f-name').value.trim(),
+      id: _gv('f-id'),
+      name: _gv('f-name'),
       productId: primaryId,
       productIds: allProductIds,
-      invoicePrefix: document.getElementById('f-invoicePrefix').value.trim(),
-      customerId: document.getElementById('f-customerId').value.trim(),
-      hasVca: document.getElementById('f-hasVca').checked,
+      invoicePrefix: _gv('f-invoicePrefix'),
+      customerId: _gv('f-customerId'),
+      hasVca: !!(document.getElementById('f-hasVca') || {}).checked,
       detectionRules: currentRules,
+      directions: currentDirections.length > 0 ? currentDirections : undefined,
       mechanicsNotes: {
-        qrph: document.getElementById('mech-qrph-note').value.trim(),
-        vca: document.getElementById('mech-vca-note').value.trim(),
-        outgoing: document.getElementById('mech-out-note').value.trim(),
-        intl: document.getElementById('mech-intl-note').value.trim(),
+        qrph: _gv('mech-qrph-note'),
+        vca: _gv('mech-vca-note'),
+        outgoing: _gv('mech-out-note'),
+        intl: _gv('mech-intl-note'),
       },
       billedTo: {
-        contact: document.getElementById('bt-contact').value.trim(),
-        company: document.getElementById('bt-company').value.trim(),
-        address1: document.getElementById('bt-address1').value.trim(),
-        address2: document.getElementById('bt-address2').value.trim(),
-        country: document.getElementById('bt-country').value.trim(),
-        email: document.getElementById('bt-email').value.trim(),
+        contact: _gv('bt-contact'),
+        company: _gv('bt-company'),
+        address1: _gv('bt-address1'),
+        address2: _gv('bt-address2'),
+        country: _gv('bt-country'),
+        email: _gv('bt-email'),
       },
-      fees,
+      ...(fees ? { fees } : {}),
     };
 
     const method = editingId ? 'PUT' : 'POST';
@@ -1224,10 +1102,221 @@ function toast(msg, type) {
 // ---- Escape HTML ----
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// ---- Directions management ----
+let currentDirections = [];
+
+function loadDirectionsFromPartner(p) {
+  if (Array.isArray(p.directions)) {
+    currentDirections = JSON.parse(JSON.stringify(p.directions));
+  } else {
+    // Build from legacy fees + detectionRules
+    currentDirections = [];
+    const fees = p.fees || {};
+    const rules = Array.isArray(p.detectionRules) ? p.detectionRules : [];
+    let ord = 0;
+    if (fees.qrph) {
+      currentDirections.push({
+        id: 'dir_qrph', name: 'QRPH', mode: 'incoming', order: ord++,
+        feeNote: (fees.notes && fees.notes.qrph) || '',
+        rules: rules.filter(r => r.direction === 'incoming').map(r => { const {direction: _d, ...rest} = r; return rest; }),
+        feeSpec: fees.qrph,
+      });
+    }
+    if (p.hasVca && fees.vca && fees.vca.type !== 'zero') {
+      currentDirections.push({
+        id: 'dir_vca', name: 'VCA', mode: 'incoming', order: ord++,
+        feeNote: (fees.notes && fees.notes.vca) || '',
+        rules: rules.filter(r => r.direction === 'vca').map(r => { const {direction: _d, ...rest} = r; return rest; }),
+        feeSpec: fees.vca,
+      });
+    }
+    if (fees.disburse) {
+      currentDirections.push({
+        id: 'dir_disburse', name: 'DISBURSE', mode: 'outgoing', order: ord++,
+        feeNote: (fees.notes && (fees.notes.outgoing || fees.notes.disburse)) || '',
+        rules: rules.filter(r => r.direction === 'outgoing').map(r => { const {direction: _d, ...rest} = r; return rest; }),
+        feeSpec: fees.disburse,
+      });
+    }
+  }
+  renderDirectionList();
+}
+
+function renderDirectionList() {
+  const container = document.getElementById('directions-list');
+  if (!container) return;
+  if (currentDirections.length === 0) {
+    container.innerHTML = '<p style="color:#aaa;font-style:italic;font-size:.85rem;">No directions configured. Click &quot;+ Add Direction&quot; to add one.</p>';
+    return;
+  }
+  container.innerHTML = currentDirections.map((d, idx) => `
+    <div class="fee-block" id="dir-card-${idx}" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <strong>${escHtml(d.name)}</strong>
+        <span style="color:${d.mode==='outgoing'?'#c0392b':'#1a6b3c'};font-size:.8rem;font-weight:600;">${d.mode.toUpperCase()}</span>
+        <button class="btn btn-danger btn-sm" onclick="deleteDirection(${idx})">Delete</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="form-row" style="margin:0;"><label style="font-size:.78rem;">Name</label><input type="text" value="${escHtml(d.name)}" onchange="updateDirField(${idx},'name',this.value)" style="width:130px;"/></div>
+        <div class="form-row" style="margin:0;"><label style="font-size:.78rem;">Mode</label>
+          <select onchange="updateDirField(${idx},'mode',this.value)">
+            <option value="incoming" ${d.mode==='incoming'?'selected':''}>incoming</option>
+            <option value="outgoing" ${d.mode==='outgoing'?'selected':''}>outgoing</option>
+          </select>
+        </div>
+        <div class="form-row" style="margin:0;flex:1;"><label style="font-size:.78rem;">Fee Note</label><input type="text" value="${escHtml(d.feeNote||'')}" onchange="updateDirField(${idx},'feeNote',this.value)" style="min-width:180px;width:100%;"/></div>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:.78rem;font-weight:600;">Fee Spec Type:</label>
+        <select id="dir-${idx}-type" onchange="onDirFeeTypeChange(${idx}, this.value)" style="margin-left:6px;">
+          ${renderFeeTypeOptions(d.mode, d.feeSpec && d.feeSpec.type)}
+        </select>
+        <div id="dir-${idx}-fee-fields" style="margin-top:8px;">
+          ${renderDirFeeFields(idx, d)}
+        </div>
+      </div>
+      <div>
+        <span style="font-size:.78rem;font-weight:600;">Rules (${(d.rules||[]).length}):</span>
+        <button class="btn btn-secondary btn-sm" onclick="toggleDirRules(${idx})" style="margin-left:6px;font-size:.75rem;padding:3px 10px;" id="dir-${idx}-rules-btn">Show</button>
+        <div id="dir-${idx}-rules" style="display:none; margin-top:6px;">
+          ${renderDirRules(idx, d)}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderFeeTypeOptions(mode, selectedType) {
+  const incomingTypes = [
+    ['zero','No Charge (Zero)'],['flat','Flat Fee'],['pct_floor','% with Floor'],
+    ['pct_floor_cap','% with Floor+Cap'],['tiered_amount','Tiered by Amount'],
+    ['tiered_amount_count','Tiered Amount+Count'],['tiered_pct','Tiered % by Amount'],['rules','Rules-based'],
+  ];
+  const outgoingTypes = [
+    ['zero','No Charge (Zero)'],['flat','Flat Fee'],['flat_rates','Flat Rates (Interbank/Intrabank)'],
+    ['by_amount','By Amount (Low/High)'],['tiered_amount','Tiered by Amount'],
+    ['tiered_count','Tiered by Count'],['rules','Rules-based'],
+  ];
+  const types = mode === 'outgoing' ? outgoingTypes : incomingTypes;
+  return types.map(([v,l]) => `<option value="${v}" ${selectedType===v?'selected':''}>${l}</option>`).join('');
+}
+
+function renderDirFeeFields(idx, d) {
+  const spec = d.feeSpec || {};
+  const type = spec.type || 'zero';
+  if (type === 'zero') return '<span style="color:#aaa;font-size:.8rem;">No fee.</span>';
+  if (type === 'flat') return `<label style="font-size:.8rem;">Fee &#8369;: <input type="number" step="0.01" value="${spec.value||0}" onchange="updateDirFeeField(${idx},'value',parseFloat(this.value)||0)" style="width:100px;"/></label>`;
+  if (type === 'pct_floor') return `<label style="font-size:.8rem;">% (e.g. 0.007): <input type="number" step="0.0001" value="${spec.pct||0}" onchange="updateDirFeeField(${idx},'pct',parseFloat(this.value)||0)" style="width:90px;"/></label> <label style="font-size:.8rem;">Floor &#8369;: <input type="number" step="0.01" value="${spec.floor||0}" onchange="updateDirFeeField(${idx},'floor',parseFloat(this.value)||0)" style="width:80px;"/></label>`;
+  if (type === 'pct_floor_cap') return `<label style="font-size:.8rem;">%: <input type="number" step="0.0001" value="${spec.pct||0}" onchange="updateDirFeeField(${idx},'pct',parseFloat(this.value)||0)" style="width:80px;"/></label> <label style="font-size:.8rem;">Floor &#8369;: <input type="number" step="0.01" value="${spec.floor||0}" onchange="updateDirFeeField(${idx},'floor',parseFloat(this.value)||0)" style="width:80px;"/></label> <label style="font-size:.8rem;">Cap &#8369;: <input type="number" step="0.01" value="${spec.cap||0}" onchange="updateDirFeeField(${idx},'cap',parseFloat(this.value)||0)" style="width:80px;"/></label>`;
+  if (type === 'flat_rates') return `<label style="font-size:.8rem;">Interbank &#8369;: <input type="number" step="0.01" value="${spec.interbank||0}" onchange="updateDirFeeField(${idx},'interbank',parseFloat(this.value)||0)" style="width:90px;"/></label> <label style="font-size:.8rem;">Intrabank &#8369;: <input type="number" step="0.01" value="${spec.intrabank||0}" onchange="updateDirFeeField(${idx},'intrabank',parseFloat(this.value)||0)" style="width:90px;"/></label>`;
+  if (type === 'tiered_amount' || type === 'tiered_count' || type === 'tiered_pct') {
+    const tiers = spec.tiers || [];
+    const rows = tiers.map((t,ti) => {
+      if (type === 'tiered_count') return `<tr><td><input type="number" value="${t.maxCount||''}" placeholder="(blank=last)" onchange="updateDirTier(${idx},${ti},'maxCount',this.value)" style="width:110px;"/></td><td><input type="number" step="0.01" value="${t.fee||0}" onchange="updateDirTier(${idx},${ti},'fee',this.value)" style="width:80px;"/></td><td><button onclick="removeDirTier(${idx},${ti})" class="btn btn-danger btn-sm" style="padding:2px 8px;">&#x2715;</button></td></tr>`;
+      if (type === 'tiered_pct') return `<tr><td><input type="number" step="0.01" value="${t.maxAmt||''}" placeholder="(blank=last)" onchange="updateDirTier(${idx},${ti},'maxAmt',this.value)" style="width:100px;"/></td><td><input type="number" step="0.0001" value="${t.pct||0}" onchange="updateDirTier(${idx},${ti},'pct',this.value)" style="width:80px;"/></td><td><input type="number" step="0.01" value="${t.floor||''}" placeholder="opt" onchange="updateDirTier(${idx},${ti},'floor',this.value)" style="width:70px;"/></td><td><button onclick="removeDirTier(${idx},${ti})" class="btn btn-danger btn-sm" style="padding:2px 8px;">&#x2715;</button></td></tr>`;
+      return `<tr><td><input type="number" step="0.01" value="${t.maxAmt||''}" placeholder="(blank=last)" onchange="updateDirTier(${idx},${ti},'maxAmt',this.value)" style="width:110px;"/></td><td><input type="number" step="0.01" value="${t.fee||0}" onchange="updateDirTier(${idx},${ti},'fee',this.value)" style="width:80px;"/></td><td><button onclick="removeDirTier(${idx},${ti})" class="btn btn-danger btn-sm" style="padding:2px 8px;">&#x2715;</button></td></tr>`;
+    }).join('');
+    const headers = type==='tiered_count' ? '<th>Up to count</th><th>Fee &#8369;</th><th></th>' :
+                    type==='tiered_pct' ? '<th>Up to amount</th><th>Rate (%)</th><th>Floor &#8369;</th><th></th>' :
+                    '<th>Up to amount &#8369;</th><th>Fee &#8369;</th><th></th>';
+    return `<table class="tiers-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table><button class="btn btn-secondary btn-sm" onclick="addDirTier(${idx})" style="margin-top:4px;">+ Add Tier</button>`;
+  }
+  if (type === 'by_amount') return `<label style="font-size:.8rem;">Threshold &#8369;: <input type="number" step="0.01" value="${spec.amtThreshold||0}" onchange="updateDirFeeField(${idx},'amtThreshold',parseFloat(this.value)||0)" style="width:90px;"/></label> <label style="font-size:.8rem;">Low Fee &#8369;: <input type="number" step="0.01" value="${spec.lowFee||0}" onchange="updateDirFeeField(${idx},'lowFee',parseFloat(this.value)||0)" style="width:80px;"/></label> <label style="font-size:.8rem;">High Fee &#8369;: <input type="number" step="0.01" value="${spec.highFee||0}" onchange="updateDirFeeField(${idx},'highFee',parseFloat(this.value)||0)" style="width:80px;"/></label>`;
+  return `<span style="color:#aaa;font-size:.8rem;">${type} (edit JSON in Firestore)</span>`;
+}
+
+function renderDirRules(idx, d) {
+  const rules = d.rules || [];
+  if (rules.length === 0) return '<p style="color:#aaa;font-size:.78rem;font-style:italic;">No rules embedded in this direction.</p>';
+  return rules.map((r, ri) => `
+    <div style="border:1px solid #eee; padding:6px; margin-bottom:4px; border-radius:4px; display:flex; justify-content:space-between; align-items:center; font-size:.78rem;">
+      <span>${escHtml(r.type)}${r.enabled===false?' <em>(disabled)</em>':''}: ${escHtml(JSON.stringify(r.params||{}))}</span>
+      <button class="btn btn-danger btn-sm" onclick="removeDirRule(${idx},${ri})" style="padding:2px 8px;">&#x2715;</button>
+    </div>
+  `).join('');
+}
+
+function toggleDirRules(idx) {
+  const el = document.getElementById(`dir-${idx}-rules`);
+  const btn = document.getElementById(`dir-${idx}-rules-btn`);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = ''; btn.textContent = 'Hide'; }
+  else { el.style.display = 'none'; btn.textContent = 'Show'; }
+}
+
+function updateDirField(idx, field, value) {
+  currentDirections[idx][field] = value;
+  if (field === 'mode') renderDirectionList();
+}
+
+function updateDirFeeField(idx, field, value) {
+  if (!currentDirections[idx].feeSpec) currentDirections[idx].feeSpec = {};
+  currentDirections[idx].feeSpec[field] = value;
+}
+
+function onDirFeeTypeChange(idx, newType) {
+  const d = currentDirections[idx];
+  const oldSpec = d.feeSpec || {};
+  d.feeSpec = { type: newType };
+  if (['tiered_amount','tiered_count','tiered_pct'].includes(newType) && Array.isArray(oldSpec.tiers)) {
+    d.feeSpec.tiers = oldSpec.tiers;
+  }
+  const el = document.getElementById(`dir-${idx}-fee-fields`);
+  if (el) el.innerHTML = renderDirFeeFields(idx, d);
+}
+
+function addDirTier(idx) {
+  const d = currentDirections[idx];
+  if (!d.feeSpec) d.feeSpec = {};
+  if (!Array.isArray(d.feeSpec.tiers)) d.feeSpec.tiers = [];
+  d.feeSpec.tiers.push({});
+  const el = document.getElementById(`dir-${idx}-fee-fields`);
+  if (el) el.innerHTML = renderDirFeeFields(idx, d);
+}
+
+function removeDirTier(idx, ti) {
+  const tiers = currentDirections[idx].feeSpec && currentDirections[idx].feeSpec.tiers;
+  if (Array.isArray(tiers)) tiers.splice(ti, 1);
+  const el = document.getElementById(`dir-${idx}-fee-fields`);
+  if (el) el.innerHTML = renderDirFeeFields(idx, currentDirections[idx]);
+}
+
+function updateDirTier(idx, ti, field, raw) {
+  const tiers = currentDirections[idx].feeSpec && currentDirections[idx].feeSpec.tiers;
+  if (!Array.isArray(tiers)) return;
+  const val = raw === '' || raw === null ? undefined : parseFloat(raw);
+  if (val === undefined || isNaN(val)) { delete tiers[ti][field]; } else { tiers[ti][field] = val; }
+}
+
+function removeDirRule(idx, ri) {
+  if (currentDirections[idx] && Array.isArray(currentDirections[idx].rules)) {
+    currentDirections[idx].rules.splice(ri, 1);
+    renderDirectionList();
+  }
+}
+
+function addDirection() {
+  currentDirections.push({
+    id: `dir_${Date.now()}`,
+    name: 'New Direction',
+    mode: 'incoming',
+    order: currentDirections.length,
+    feeNote: '',
+    rules: [],
+    feeSpec: { type: 'zero' },
+  });
+  renderDirectionList();
+}
+
+function deleteDirection(idx) {
+  if (!confirm(`Delete direction "${currentDirections[idx].name}"?`)) return;
+  currentDirections.splice(idx, 1);
+  renderDirectionList();
+}
+
 // ---- Init ----
 loadPartners();
 loadRuleRegistry();
-renderFeeFields('qrph'); renderFeeFields('vca'); renderDisburseFields();
 
 // Close overlay on backdrop click
 ['editOverlay','deleteOverlay'].forEach(id => {

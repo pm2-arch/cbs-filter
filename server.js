@@ -617,6 +617,59 @@ async function patchDetectionRules() {
   }
 }
 
+// One-time migration: convert detectionRules + fees.qrph/vca/disburse → partner.directions array.
+// Runs at startup; skips already-migrated partners (those with a directions array present).
+async function patchDirections() {
+  const snap = await db.collection(PARTNERS_COLLECTION).get();
+  const batch = db.batch();
+  let count = 0;
+  for (const doc of snap.docs) {
+    const p = doc.data();
+    if (Array.isArray(p.directions)) continue; // already migrated
+    const fees = p.fees || {};
+    const detRules = Array.isArray(p.detectionRules) ? p.detectionRules : [];
+    const directions = [];
+    let ord = 0;
+    // QRPH direction (incoming)
+    if (fees.qrph) {
+      directions.push({
+        id: "dir_qrph", name: "QRPH", mode: "incoming", order: ord++,
+        feeNote: (fees.notes && fees.notes.qrph) || "",
+        rules: detRules.filter(r => r.direction === "incoming").map(({ direction: _d, ...rest }) => rest),
+        feeSpec: fees.qrph,
+      });
+    }
+    // VCA direction (incoming) — only if partner has VCA with non-zero fee
+    if (p.hasVca && fees.vca && fees.vca.type !== "zero") {
+      directions.push({
+        id: "dir_vca", name: "VCA", mode: "incoming", order: ord++,
+        feeNote: (fees.notes && fees.notes.vca) || "",
+        rules: detRules.filter(r => r.direction === "vca").map(({ direction: _d, ...rest }) => rest),
+        feeSpec: fees.vca,
+      });
+    }
+    // DISBURSE direction (outgoing)
+    if (fees.disburse) {
+      directions.push({
+        id: "dir_disburse", name: "DISBURSE", mode: "outgoing", order: ord++,
+        feeNote: (fees.notes && (fees.notes.outgoing || fees.notes.disburse)) || "",
+        rules: detRules.filter(r => r.direction === "outgoing").map(({ direction: _d, ...rest }) => rest),
+        feeSpec: fees.disburse,
+      });
+    }
+    if (directions.length > 0) {
+      batch.update(doc.ref, { directions });
+      count++;
+    }
+  }
+  if (count > 0) {
+    await batch.commit();
+    console.log(`[init] Migrated directions for ${count} partner(s).`);
+  } else {
+    console.log("[init] All partners already have directions — migration not needed.");
+  }
+}
+
 async function loadFromFirestore() {
   const snap = await db.collection(PARTNERS_COLLECTION).orderBy("order").get();
   return snap.docs.map(d => ({ ...d.data() }));
@@ -645,6 +698,7 @@ async function initPartners() {
   await patchMissingIncomingConfig();
   await patchAioFeeSpec();
   await patchDetectionRules();
+  await patchDirections();
   const partners = await loadFromFirestore();
   _partners = partners;
   _feeRulesMap = {};
@@ -707,6 +761,23 @@ function validatePartnerInput(body) {
         params: (r.params && typeof r.params === "object") ? r.params : {},
       }))
     : null;
+  // directions — dynamic directions array; null = not provided, preserve existing in Firestore.
+  const directions = Array.isArray(body.directions)
+    ? body.directions.map((d, idx) => ({
+        id: String(d.id || `dir_${Date.now()}_${idx}`),
+        name: String(d.name || "").trim(),
+        mode: ["incoming", "outgoing"].includes(d.mode) ? d.mode : "incoming",
+        order: typeof d.order === "number" ? d.order : idx,
+        feeNote: String(d.feeNote || "").trim(),
+        rules: Array.isArray(d.rules) ? d.rules.map(r => ({
+          id: String(r.id || `rule_${Date.now()}`),
+          type: String(r.type || ""),
+          enabled: r.enabled !== false,
+          params: (r.params && typeof r.params === "object") ? r.params : {},
+        })) : [],
+        feeSpec: (d.feeSpec && typeof d.feeSpec === "object") ? d.feeSpec : { type: "zero" },
+      }))
+    : null;
   return {
     id,
     name,
@@ -724,6 +795,7 @@ function validatePartnerInput(body) {
       : (body.outgoingExcludeReasons ? String(body.outgoingExcludeReasons).split(",").map(s => s.trim()).filter(Boolean) : []),
     outgoingTransferModes,
     detectionRules,
+    directions,
     billedTo,
     fees,
     mechanicsNotes,
@@ -858,6 +930,59 @@ function buildDirectionFilters(partner, direction, allProductCodes, code) {
     }
   }
 
+  return filters;
+}
+
+// Build filter array from a direction object (dynamic directions architecture).
+// dir.mode === "incoming" → automatic SETTLED; "outgoing" → no automatic SETTLED.
+// dir.rules are direction-scoped (no `direction` field; enabled by default).
+function buildFiltersForDirection(dir, allProductCodes, code) {
+  const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
+  const filters = [
+    allProductCodes.length > 1
+      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
+      : { column: "A", altColumns: ["branch_id"], equals: code },
+  ];
+  if (dir.mode !== "outgoing") {
+    filters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
+  }
+  const activeRules = Array.isArray(dir.rules) ? dir.rules.filter(r => r.enabled !== false) : [];
+  for (const rule of activeRules) {
+    switch (rule.type) {
+      case "transfer_mode_filter": {
+        const modes = Array.isArray(rule.params?.modes) ? rule.params.modes : [];
+        if (modes.length > 0) filters.push({ column: "Transfer mode", altColumns: TRANSFER_MODE_ALTS, includeValues: modes });
+        break;
+      }
+      case "channel_filter": {
+        const channels = Array.isArray(rule.params?.channels) ? rule.params.channels : [];
+        if (channels.length > 0) filters.push({ column: "Channel", includeValues: channels });
+        break;
+      }
+      case "channel_exclude": {
+        const channels = Array.isArray(rule.params?.channels) ? rule.params.channels : [];
+        if (channels.length > 0) filters.push({ column: "Channel", excludeValues: channels });
+        break;
+      }
+      case "status_filter": {
+        const status = rule.params?.status;
+        if (status) filters.push({ column: "Status", altColumns: ["status"], equals: status, caseSensitive: false });
+        break;
+      }
+      case "ref_code_required":
+        filters.push({
+          column: "Transfer reference code (if alias used)",
+          altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
+          notEquals: "", caseSensitive: false,
+        });
+        break;
+      case "reason_code_exclude": {
+        const codes = Array.isArray(rule.params?.codes) ? rule.params.codes : [];
+        if (codes.length > 0) filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: codes, caseSensitive: false });
+        break;
+      }
+    }
+  }
   return filters;
 }
 
@@ -1543,6 +1668,38 @@ async function findSummaryCells(sheets, billingFileId) {
   const hasVca = vcaFeeRow !== null;
   const interbankCountRow = find(/^INTERBANK COUNT$/i);
   const intrabankCountRow = find(/^INTRABANK COUNT$/i);
+  // Build direction-agnostic map: direction name → { topRow, feeRow, countRow, volumeRow }
+  // Works for both old fixed structure (VCA/QRPH/DISBURSE) and new dynamic structures.
+  const directionRows = {};
+  for (const feeRow of feeDetailRows) {
+    const feeIdx = feeRow - 1; // 0-based
+    for (let j = feeIdx - 1; j >= Math.max(0, feeIdx - 5); j--) {
+      const label = String((rows[j] || [])[0] || "").trim();
+      if (!label) continue;
+      const dist = feeIdx - j;
+      const colC = String((rows[j] || [])[2] || "").trim();
+      if (dist <= 2 || /applicable fee/i.test(colC)) {
+        if (!directionRows[label]) directionRows[label] = {};
+        directionRows[label].feeRow    = feeRow;
+        directionRows[label].countRow  = feeRow + 1;
+        directionRows[label].volumeRow = feeRow + 2;
+        break;
+      }
+    }
+  }
+  // Find topRow for each direction (first occurrence of that exact label)
+  for (const label of Object.keys(directionRows)) {
+    const re = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const topRow = find(re);
+    if (topRow) directionRows[label].topRow = topRow;
+  }
+  // Attach interbank/intrabank rows to any outgoing direction section
+  if (interbankCountRow || intrabankCountRow) {
+    for (const label of Object.keys(directionRows)) {
+      if (interbankCountRow) directionRows[label]._interbankCountRow = interbankCountRow;
+      if (intrabankCountRow) directionRows[label]._intrabankCountRow = intrabankCountRow;
+    }
+  }
   return {
     periodTopRow,
     periodReconRow,
@@ -1559,6 +1716,7 @@ async function findSummaryCells(sheets, billingFileId) {
     hasVca,
     interbankCountRow,
     intrabankCountRow,
+    directionRows,
   };
 }
 
@@ -1568,44 +1726,68 @@ function colLetterFromIndex(idx) { return colIndexToLetter(idx); }
 // initBlankSummary — writes SUMMARY structure labels into a freshly-created
 // blank Google Sheet so findSummaryCells() can locate every cell by label.
 // ---------------------------------------------------------------------------
-async function initBlankSummary(sheets, fileId) {
-  const rows = [
-    // Row 1: Title — sumUpdates overwrites A1 with partner name, so keep blank here
-    [""],
-    // Top summary (rows 2-5) — accumulated fee totals written here after each direction
-    ["VCA",      0],
-    ["QRPH",     0],
-    ["DISBURSE", 0],
-    ["TOTAL",    0],
-    [""],
-    ["BILLING PERIOD"],
-    [""],  // period text written here during the run
-    [""],
-    // VCA detail section (rows 10-13)
-    ["VCA"],
-    ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
-    ["TOTAL COUNTS",         0],
-    ["TOTAL VOLUME",         0],
-    [""],
-    // QRPH detail section (rows 15-18)
-    ["QRPH"],
-    ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
-    ["TOTAL COUNTS",         0],
-    ["TOTAL VOLUME",         0],
-    [""],
-    // DISBURSE detail section (rows 20-23)
-    ["DISBURSE"],
-    ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
-    ["TOTAL COUNTS",         0],
-    ["TOTAL VOLUME",         0],
-    [""],
-    // Interbank / intrabank counts (rows 25-26) — written during outgoing run
-    ["INTERBANK COUNT", 0],
-    ["INTRABANK COUNT", 0],
-  ];
+async function initBlankSummary(sheets, fileId, directions) {
+  let rows;
+  if (Array.isArray(directions) && directions.length > 0) {
+    // Dynamic structure based on partner.directions
+    rows = [[""]]; // Row 1: title placeholder
+    // Top summary: one row per direction
+    for (const d of directions) rows.push([d.name, 0]);
+    rows.push(["TOTAL", 0]);
+    rows.push([""]);
+    rows.push(["BILLING PERIOD"]);
+    rows.push([""]); // period text
+    rows.push([""]);
+    // Detail sections: one per direction
+    for (const d of directions) {
+      rows.push([d.name]);
+      rows.push(["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"]);
+      rows.push(["TOTAL COUNTS", 0]);
+      rows.push(["TOTAL VOLUME", 0]);
+      rows.push([""]);
+      // Interbank/intrabank rows only for outgoing flat_rates with different rates
+      const spec = d.feeSpec || {};
+      if (d.mode === "outgoing" && spec.type === "flat_rates" &&
+          typeof spec.interbank === "number" && typeof spec.intrabank === "number" &&
+          spec.interbank !== spec.intrabank) {
+        rows.push(["INTERBANK COUNT", 0]);
+        rows.push(["INTRABANK COUNT", 0]);
+      }
+    }
+  } else {
+    // Legacy fixed 26-row structure for partners without directions array
+    rows = [
+      [""],
+      ["VCA",      0],
+      ["QRPH",     0],
+      ["DISBURSE", 0],
+      ["TOTAL",    0],
+      [""],
+      ["BILLING PERIOD"],
+      [""],
+      [""],
+      ["VCA"],
+      ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
+      ["TOTAL COUNTS",         0],
+      ["TOTAL VOLUME",         0],
+      [""],
+      ["QRPH"],
+      ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
+      ["TOTAL COUNTS",         0],
+      ["TOTAL VOLUME",         0],
+      [""],
+      ["DISBURSE"],
+      ["TOTAL AMOUNT TO BILL", 0, "Applicable Fee"],
+      ["TOTAL COUNTS",         0],
+      ["TOTAL VOLUME",         0],
+      [""],
+      ["INTERBANK COUNT", 0],
+      ["INTRABANK COUNT", 0],
+    ];
+  }
   await withRetry(() => sheets.spreadsheets.values.update({
     spreadsheetId: fileId,
-    range: "SUMMARY!A1:C26",
+    range: "SUMMARY!A1",
     valueInputOption: "RAW",
     requestBody: { values: rows },
   }), { label: "initializing blank SUMMARY structure" });
@@ -2173,6 +2355,14 @@ app.put("/admin/partners/:id", requireAdmin, async (req, res) => {
         delete data.detectionRules;
       }
     }
+    // Preserve existing directions if admin did not provide them (null = not sent)
+    if (data.directions === null) {
+      if (existing.exists && Array.isArray(existing.data().directions)) {
+        data.directions = existing.data().directions;
+      } else {
+        delete data.directions;
+      }
+    }
     await db.collection(PARTNERS_COLLECTION).doc(id).set(data);
     await refreshPartners();
     res.json({ ok: true });
@@ -2352,6 +2542,7 @@ app.post("/build-billing", async (req, res) => {
       partnerId,            // new: prefer this
       code: bodyCode,       // back-compat (raw product code)
       direction,
+      directionId,          // new: explicit direction ID from partner.directions
       period,
       year: bodyYear,       // new: optional explicit year override
       invoiceNumber,
@@ -2379,11 +2570,35 @@ app.post("/build-billing", async (req, res) => {
     }
     const code = productCode(partner);
     const invoicePrefix = partner.invoicePrefix;
+    // Resolve billing direction from partner.directions (new architecture).
+    // Supports directionId (new) and legacy direction string ("incoming"/"vca"/"outgoing").
+    const partnerDirs = Array.isArray(partner.directions) ? partner.directions : [];
+    let dir = null;
+    if (directionId && partnerDirs.length > 0) {
+      dir = partnerDirs.find(d => d.id === directionId);
+    } else if (partnerDirs.length > 0) {
+      if (direction === "vca") {
+        dir = partnerDirs.find(d => d.id === "dir_vca" || d.name.toUpperCase() === "VCA");
+      } else if (direction === "outgoing") {
+        dir = partnerDirs.find(d => d.mode === "outgoing");
+      } else {
+        // "incoming" → first incoming that is not VCA
+        dir = partnerDirs.find(d => d.mode === "incoming" && d.id !== "dir_vca" && d.name.toUpperCase() !== "VCA")
+           || partnerDirs.find(d => d.mode === "incoming");
+      }
+    }
+    const dirName  = dir ? dir.name  : (direction === "outgoing" ? "DISBURSE" : direction === "vca" ? "VCA" : "QRPH");
+    const dirMode  = dir ? dir.mode  : (direction === "outgoing" ? "outgoing" : "incoming");
+    const isVcaDir = dirName.toUpperCase() === "VCA";
+    const isQrph   = dirMode === "incoming" && !isVcaDir;
+    const isOutgoing = dirMode === "outgoing";
     // V5/TopJuan CBS files carry all incoming transactions in a single tab.
     // The transfer_mode column distinguishes them: QR_P2M = QRPH fee, P2P = VCA fee.
     // For these partners the billing wizard sends the SAME file IDs for both directions;
     // we add a transfer_mode filter to split them at read time.
-    const partnerHasVca = !!partner.hasVca;
+    const partnerHasVca = partnerDirs.length > 0
+      ? partnerDirs.some(d => d.name.toUpperCase() === "VCA")
+      : !!partner.hasVca;
     // BILLED TO: prefer the wizard-supplied block (officer may have edited it);
     // fall back to the partner's registered default. Always normalized to 6 strings.
     const billedTo = normalizeBilledTo(
@@ -2410,8 +2625,11 @@ app.post("/build-billing", async (req, res) => {
     if (fileIds.length > 62) {
       return res.status(400).json({ error: "validation", message: "Too many source files in one consolidated run (max 62)." });
     }
-    if (!["incoming", "outgoing", "vca"].includes(direction)) {
-      return res.status(400).json({ error: "validation", message: "direction must be 'incoming', 'outgoing', or 'vca'" });
+    if (!directionId && !["incoming", "outgoing", "vca"].includes(direction)) {
+      return res.status(400).json({ error: "validation", message: "direction must be 'incoming', 'outgoing', or 'vca', or provide directionId" });
+    }
+    if (directionId && !dir) {
+      return res.status(400).json({ error: "validation", message: `directionId "${directionId}" not found in partner.directions` });
     }
     if (!period || period.length > 64) {
       return res.status(400).json({ error: "validation", message: "Missing or oversized period" });
@@ -2479,7 +2697,9 @@ app.post("/build-billing", async (req, res) => {
     const allProductCodes = (Array.isArray(partner.productIds) && partner.productIds.length > 1)
       ? partner.productIds.map(pid => `(Prod)${pid}`)
       : [code];
-    const directionFilters = buildDirectionFilters(partner, direction, allProductCodes, code);
+    const directionFilters = dir
+      ? buildFiltersForDirection(dir, allProductCodes, code)
+      : buildDirectionFilters(partner, direction, allProductCodes, code);
     let sourceHeader = null;
     let matches = [];
     for (const fid of fileIds) {
@@ -2540,8 +2760,8 @@ app.post("/build-billing", async (req, res) => {
     // VCA: returning early leaves stale VCA data in the SUMMARY from a previous run.
     // INCOMING: a partner may legitimately have no QR_P2M transactions on a given day.
     // Both continue through to the SUMMARY write stage so they write 0s and the invoice still generates.
-    const vcaSkipped      = (direction === "vca"      && matches.length === 0);
-    const incomingSkipped = (direction === "incoming" && matches.length === 0);
+    const vcaSkipped      = (isVcaDir && matches.length === 0);
+    const incomingSkipped = (isQrph   && matches.length === 0);
 
     // When VCA matches 0 rows, run a diagnostic to identify which filter is the culprit.
     // One extra file read (product-code filter only), then all subsequent counts are in-memory.
@@ -2608,12 +2828,12 @@ app.post("/build-billing", async (req, res) => {
     stage = "classifying interbank/intrabank";
     let interbankCount = 0;
     let intrabankCount = 0;
-    const ds = partner.fees?.disburse || {};
+    const ds = dir ? (dir.feeSpec || {}) : (partner.fees?.disburse || {});
     // Only Magic Payment has different interbank/intrabank rates — all others use a single disburse line.
     const needsInterbankSplit = ds.type === "flat_rates" &&
       typeof ds.interbank === "number" && typeof ds.intrabank === "number" &&
       ds.interbank !== ds.intrabank;
-    if (direction === "outgoing") {
+    if (isOutgoing) {
       if (needsInterbankSplit) {
         const kIdx = sourceHeader.findIndex((h) =>
           /recipient\s+institution\s+code/i.test(String(h || ""))
@@ -2710,7 +2930,7 @@ app.post("/build-billing", async (req, res) => {
       // gain VCA rows in the structure. Guard: skip if VCA already ran first and wrote
       // data (which would be wiped by a reinit). VCA-first ordering is a UI bug that is
       // now fixed, but this server guard is a belt-and-suspenders fallback.
-      if (direction === 'incoming') {
+      if (isQrph) {
         let vcaAlreadyRan = false;
         try {
           const vcaCheck = await sheets.spreadsheets.values.get({
@@ -2721,7 +2941,7 @@ app.post("/build-billing", async (req, res) => {
           vcaAlreadyRan = !!(vcaCheck.data.values && vcaCheck.data.values.length > 0);
         } catch (_) { /* VCA tab absent — treat as not yet run */ }
         if (!vcaAlreadyRan) {
-          await initBlankSummary(sheets, reportFileId);
+          await initBlankSummary(sheets, reportFileId, partnerDirs.length > 0 ? partnerDirs : null);
         } else {
           console.log("[SUMMARY] VCA already ran — skipping initBlankSummary to preserve VCA data.");
         }
@@ -2746,11 +2966,13 @@ app.post("/build-billing", async (req, res) => {
       }), { label: "reading new sheet metadata" });
       const sheet1 = (newSheetMeta.data.sheets || []).find(s => s.properties.title === "Sheet1");
       const sheet1Id = sheet1?.properties?.sheetId ?? 0;
-      const extraTabs = [
-        { addSheet: { properties: { title: "QRPH" } } },
-        ...(partnerHasVca ? [{ addSheet: { properties: { title: "VCA" } } }] : []),
-        { addSheet: { properties: { title: "DISBURSE" } } },
-      ];
+      const extraTabs = partnerDirs.length > 0
+        ? partnerDirs.map(d => ({ addSheet: { properties: { title: d.name } } }))
+        : [
+            { addSheet: { properties: { title: "QRPH" } } },
+            ...(partnerHasVca ? [{ addSheet: { properties: { title: "VCA" } } }] : []),
+            { addSheet: { properties: { title: "DISBURSE" } } },
+          ];
       await withRetry(() => sheets.spreadsheets.batchUpdate({
         spreadsheetId: reportFileId,
         requestBody: { requests: [
@@ -2759,31 +2981,29 @@ app.post("/build-billing", async (req, res) => {
         ]},
       }), { label: "renaming Sheet1 and adding tabs" });
       // Write SUMMARY structure so findSummaryCells() can locate every cell
-      await initBlankSummary(sheets, reportFileId);
+      await initBlankSummary(sheets, reportFileId, partnerDirs.length > 0 ? partnerDirs : null);
     }
 
     // ---- Ensure VCA tab exists (blank report includes it; reused reports may predate VCA) ----
-    if (partnerHasVca && (direction === "vca")) {
+    if (partnerHasVca && isVcaDir) {
       stage = "ensuring VCA tab";
       const vcaSheetsMeta = await withRetry(() => sheets.spreadsheets.get({
         spreadsheetId: reportFileId,
         fields: "sheets(properties(sheetId,title))",
       }), { label: "reading sheet list for VCA check" });
       const existingTitles = (vcaSheetsMeta.data.sheets || []).map((s) => s.properties.title);
-      if (!existingTitles.includes("VCA")) {
+      if (!existingTitles.includes(dirName)) {
         await withRetry(() => sheets.spreadsheets.batchUpdate({
           spreadsheetId: reportFileId,
           requestBody: {
-            requests: [{
-              addSheet: { properties: { title: "VCA" } },
-            }],
+            requests: [{ addSheet: { properties: { title: dirName } } }],
           },
-        }), { label: "adding VCA tab to report" });
+        }), { label: `adding ${dirName} tab to report` });
       }
     }
 
     // ---- Pick target tab ----
-    const targetTab = direction === "outgoing" ? "DISBURSE" : direction === "vca" ? "VCA" : "QRPH";
+    const targetTab = dirName;
 
     // ---- Write CBS header as row 1 of target tab (blank reports need this; reused reports are safe to re-write) ----
     stage = "writing tab header row";
@@ -2800,7 +3020,7 @@ app.post("/build-billing", async (req, res) => {
 
     // ---- Detect header row in target tab ----
     stage = "detecting template header row";
-    const anchors = direction === "outgoing"
+    const anchors = isOutgoing
       ? ["Sending branch name", "Amount", "Status"]
       : ["Receiving branch name", "Amount", "Status", "branch_id", "cbs_amount_inward", "status"];
     const { headerRowIdx: tplHeaderRow, header: tplHeader } = await findHeaderRowInTab(
@@ -2889,25 +3109,26 @@ app.post("/build-billing", async (req, res) => {
     // ---- Compute per-partner fees as VALUES (the report template carries no formulas) ----
     const rules = feeRules(partner);
     const partnerFeeSpec = (_partners.find(p => p.id === partner.id) || {}).fees || {};
-    console.log(`[billing-fees] partner=${partner.id} direction=${direction} feeSpec=${JSON.stringify(partnerFeeSpec)}`);
+    // For directions-based fee computation, build fee func from dir.feeSpec
+    const dirFeeFunc = dir ? buildFeeFunc(dir.feeSpec) : null;
+    console.log(`[billing-fees] partner=${partner.id} direction=${direction} dirName=${dirName} feeSpec=${JSON.stringify(dir ? dir.feeSpec : partnerFeeSpec)}`);
     // Detect amount column dynamically from source file header (not hardcoded index).
-    // Magic CBS uses title-case "Amount" at col D (idx 3); V5/TopJuan CBS uses "cbs_amount_inward" at idx 6.
     const amtIdx = (() => {
       const i = sourceHeader.findIndex((h) => /^cbs_amount_inward$/i.test(String(h || "")));
       if (i >= 0) return i;
       const j = sourceHeader.findIndex((h) => /^amount$/i.test(String(h || "")));
       if (j >= 0) return j;
-      return direction === "outgoing" ? 4 : 3; // safe fallback
+      return isOutgoing ? 4 : 3; // safe fallback
     })();
     let qrphFee = 0, qrphVolume = 0, disburseFee = 0, disburseVolume = 0, vcaFee = 0, vcaVolume = 0;
-    if (direction === "vca") {
+    if (isVcaDir) {
       // VCA: V5/TopJuan pre-split VCA rows into a separate tab — all rows in this direction are VCA.
       stage = "writing VCA fee values";
       const vcaRunCount = aligned.length;
       const feeVals = aligned.map((row) => {
         const amt = Number(row[amtIdx]);
         if (row[amtIdx] === "" || !Number.isFinite(amt)) return [""];
-        const fee = rules.vca(amt, vcaRunCount);
+        const fee = dirFeeFunc ? dirFeeFunc(amt, vcaRunCount) : rules.vca(amt, vcaRunCount);
         vcaFee += fee;
         vcaVolume += amt;
         return [fee];
@@ -2917,16 +3138,13 @@ app.post("/build-billing", async (req, res) => {
         const startRow = dataStartRow + off;
         await withRetry(() => sheets.spreadsheets.values.update({
           spreadsheetId: reportFileId,
-          range: `'VCA'!W${startRow}:W${startRow + chunk.length - 1}`,
+          range: `'${targetTab}'!W${startRow}:W${startRow + chunk.length - 1}`,
           valueInputOption: "USER_ENTERED",
           requestBody: { values: chunk },
         }), { label: `writing VCA fee values (rows ${startRow}-${startRow + chunk.length - 1})` });
       }
-    } else if (direction === "incoming") {
+    } else if (isQrph) {
       // QRPH/VCA: per-row Applicable Fee in column W (values, not formulas), summed into qrphFee.
-      // Incoming rows mix QR_P2M (QRPH) and P2P/QR_P2P (VCA) — split by Transfer mode so each
-      // bills at its own per-partner rate (QR_P2M → qrph(), P2P → vca()). vca()===0 → not billed.
-      // modeIdx must come from sourceHeader (not tplHeader) — source has "Transfer mode", template may not.
       stage = "writing QRPH/VCA fee values";
       const modeIdx = sourceHeader.findIndex((h) => /transfer[\s_]*mode/i.test(String(h || "")));
       let vcaCount = 0;
@@ -2935,9 +3153,11 @@ app.post("/build-billing", async (req, res) => {
         const amt = Number(row[amtIdx]);
         if (row[amtIdx] === "" || !Number.isFinite(amt)) return [""];
         const mode = modeIdx >= 0 ? String(row[modeIdx] || "").toUpperCase() : "";
-        const isVca = mode.includes("P2P"); // matches "P2P" and "QR_P2P"; "QR_P2M" excluded
-        const fee = isVca ? rules.vca(amt, incomingRunCount) : rules.qrph(amt, incomingRunCount);
-        if (isVca) vcaCount++;
+        const isVcaRow = mode.includes("P2P"); // matches "P2P" and "QR_P2P"; "QR_P2M" excluded
+        const fee = isVcaRow
+          ? rules.vca(amt, incomingRunCount)
+          : (dirFeeFunc ? dirFeeFunc(amt, incomingRunCount) : rules.qrph(amt, incomingRunCount));
+        if (isVcaRow) vcaCount++;
         qrphFee += fee;
         qrphVolume += amt;
         return [fee];
@@ -2949,7 +3169,7 @@ app.post("/build-billing", async (req, res) => {
         const startRow = dataStartRow + off;
         await withRetry(() => sheets.spreadsheets.values.update({
           spreadsheetId: reportFileId,
-          range: `'QRPH'!W${startRow}:W${startRow + chunk.length - 1}`,
+          range: `'${targetTab}'!W${startRow}:W${startRow + chunk.length - 1}`,
           valueInputOption: "USER_ENTERED",
           requestBody: { values: chunk },
         }), { label: `writing QRPH fee values (rows ${startRow}-${startRow + chunk.length - 1})` });
@@ -2961,12 +3181,21 @@ app.post("/build-billing", async (req, res) => {
         const amt = Number(row[amtIdx]);
         if (Number.isFinite(amt)) disburseVolume += amt;
       }
-      if (rules.disburseTieredCount) {
-        // Count-tiered disburse: all txns billed at same rate, determined by total run count.
+      const dirDs = dir ? (dir.feeSpec || {}) : ds;
+      if (dirDs.type === "tiered_count") {
+        const rate = buildFeeFunc(dirDs)(0, aligned.length);
+        disburseFee = aligned.length * rate;
+      } else if (dirDs.type === "flat_rates") {
+        disburseFee = interbankCount * (dirDs.interbank || 0) + intrabankCount * (dirDs.intrabank || 0);
+      } else if (dirFeeFunc && dirDs.type && dirDs.type !== "zero") {
+        disburseFee = aligned.reduce((sum, row) => {
+          const amt = Number(row[amtIdx]);
+          return sum + (Number.isFinite(amt) ? dirFeeFunc(amt) : 0);
+        }, 0);
+      } else if (rules.disburseTieredCount) {
         const rate = rules.disburseTieredCount(0, aligned.length);
         disburseFee = aligned.length * rate;
       } else if (rules.disbursePerTxnFee) {
-        // Per-transaction disburse fee (AIO by_amount, tiered_amount, flat, etc.).
         disburseFee = aligned.reduce((sum, row) => {
           const amt = Number(row[amtIdx]);
           return sum + (Number.isFinite(amt) ? rules.disbursePerTxnFee(amt) : 0);
@@ -3020,37 +3249,51 @@ app.post("/build-billing", async (req, res) => {
     }
     // This direction's detail block — fee / count / volume (raw, NOT rounded) + rate in col C.
     // Subtotals stay as raw floats matching the human process; only grand totals use round2().
-    if (direction === "vca") {
-      if (sumCells.vcaFeeRow) {
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow}`, values: [[vcaFee]] });
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 1}`, values: [[matches.length]] });
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 2}`, values: [[vcaVolume]] });
-        sumUpdates.push({ range: `SUMMARY!C${sumCells.vcaFeeRow}`, values: [[matches.length > 0 ? round2(vcaFee / matches.length) : rules.vca(1)]] });
-      }
-    } else if (direction === "incoming") {
-      if (sumCells.qrphFeeRow) {
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow}`, values: [[qrphFee]] });
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow + 1}`, values: [[matches.length]] });
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow + 2}`, values: [[qrphVolume]] });
-        sumUpdates.push({ range: `SUMMARY!C${sumCells.qrphFeeRow}`, values: [[`${rules.qrphNote}; ${rules.vcaNote}`]] });
+    const dirSumRows = sumCells.directionRows && sumCells.directionRows[dirName];
+    if (dirSumRows && dirSumRows.feeRow) {
+      const thisFee    = isVcaDir ? vcaFee : isQrph ? qrphFee : disburseFee;
+      const thisVolume = isVcaDir ? vcaVolume : isQrph ? qrphVolume : disburseVolume;
+      sumUpdates.push({ range: `SUMMARY!B${dirSumRows.feeRow}`,    values: [[thisFee]] });
+      sumUpdates.push({ range: `SUMMARY!B${dirSumRows.countRow}`,  values: [[matches.length]] });
+      sumUpdates.push({ range: `SUMMARY!B${dirSumRows.volumeRow}`, values: [[thisVolume]] });
+      // Rate / fee note in col C
+      if (isVcaDir) {
+        sumUpdates.push({ range: `SUMMARY!C${dirSumRows.feeRow}`, values: [[matches.length > 0 ? round2(vcaFee / matches.length) : rules.vca(1)]] });
+      } else if (isQrph) {
+        sumUpdates.push({ range: `SUMMARY!C${dirSumRows.feeRow}`, values: [[`${rules.qrphNote}; ${rules.vcaNote}`]] });
+      } else {
+        const disburseNote = (dir && dir.feeNote) || rules.disburseNote || rules.disburse.interbank;
+        sumUpdates.push({ range: `SUMMARY!C${dirSumRows.feeRow}`, values: [[disburseNote]] });
       }
     } else {
-      if (sumCells.disburseFeeRow) {
-        sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow}`, values: [[disburseFee]] });
+      // Fallback: use old hardcoded rows
+      if (isVcaDir && sumCells.vcaFeeRow) {
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow}`,     values: [[vcaFee]] });
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 1}`, values: [[matches.length]] });
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.vcaFeeRow + 2}`, values: [[vcaVolume]] });
+        sumUpdates.push({ range: `SUMMARY!C${sumCells.vcaFeeRow}`,     values: [[matches.length > 0 ? round2(vcaFee / matches.length) : rules.vca(1)]] });
+      } else if (isQrph && sumCells.qrphFeeRow) {
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow}`,     values: [[qrphFee]] });
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow + 1}`, values: [[matches.length]] });
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.qrphFeeRow + 2}`, values: [[qrphVolume]] });
+        sumUpdates.push({ range: `SUMMARY!C${sumCells.qrphFeeRow}`,     values: [[`${rules.qrphNote}; ${rules.vcaNote}`]] });
+      } else if (isOutgoing && sumCells.disburseFeeRow) {
+        sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow}`,     values: [[disburseFee]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow + 1}`, values: [[matches.length]] });
         sumUpdates.push({ range: `SUMMARY!B${sumCells.disburseFeeRow + 2}`, values: [[disburseVolume]] });
-        sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`, values: [[rules.disburseNote || rules.disburse.interbank]] });
+        sumUpdates.push({ range: `SUMMARY!C${sumCells.disburseFeeRow}`,     values: [[rules.disburseNote || rules.disburse.interbank]] });
       }
-      // Store interbank/intrabank counts only for partners with a real split (Magic Payment).
-      // For all other partners, explicitly zero these rows — the template may have formulas
-      // that auto-calculate from DISBURSE tab column K, which would show wrong counts.
-      if (needsInterbankSplit) {
-        if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[interbankCount]] });
-        if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[intrabankCount]] });
-      } else {
-        if (sumCells.interbankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.interbankCountRow}`, values: [[""]] });
-        if (sumCells.intrabankCountRow) sumUpdates.push({ range: `SUMMARY!B${sumCells.intrabankCountRow}`, values: [[""]] });
-      }
+    }
+    if (needsInterbankSplit) {
+      const ibRow = (dirSumRows && dirSumRows._interbankCountRow) || sumCells.interbankCountRow;
+      const inbRow = (dirSumRows && dirSumRows._intrabankCountRow) || sumCells.intrabankCountRow;
+      if (ibRow) sumUpdates.push({ range: `SUMMARY!B${ibRow}`, values: [[interbankCount]] });
+      if (inbRow) sumUpdates.push({ range: `SUMMARY!B${inbRow}`, values: [[intrabankCount]] });
+    } else if (isOutgoing) {
+      const ibRow = (dirSumRows && dirSumRows._interbankCountRow) || sumCells.interbankCountRow;
+      const inbRow = (dirSumRows && dirSumRows._intrabankCountRow) || sumCells.intrabankCountRow;
+      if (ibRow) sumUpdates.push({ range: `SUMMARY!B${ibRow}`, values: [[""]] });
+      if (inbRow) sumUpdates.push({ range: `SUMMARY!B${inbRow}`, values: [[""]] });
     }
     if (sumUpdates.length > 0) {
       await withRetry(() => sheets.spreadsheets.values.batchUpdate({
@@ -3099,17 +3342,17 @@ app.post("/build-billing", async (req, res) => {
     // This eliminates the write-then-read-back dependency that has caused persistent invoice errors:
     // if a Sheets write fails or a row label is misidentified, the current direction's total
     // is still correct because it comes from the in-memory computation, not from Sheets.
-    const qrphTotalFee   = direction === "incoming" ? round2(qrphFee)    : round2(sv(0));
-    const qrphCount      = direction === "incoming" ? matches.length      : sv(1);
-    const disburseTotalFee = direction === "outgoing" ? round2(disburseFee) : round2(sv(2));
-    const disburseCount  = direction === "outgoing" ? matches.length      : sv(3);
+    const qrphTotalFee   = isQrph     ? round2(qrphFee)    : round2(sv(0));
+    const qrphCount      = isQrph     ? matches.length      : sv(1);
+    const disburseTotalFee = isOutgoing ? round2(disburseFee) : round2(sv(2));
+    const disburseCount  = isOutgoing ? matches.length      : sv(3);
     const eValues = (sumRead.data.valueRanges[4]?.values || []).flat();
     const kValues = (sumRead.data.valueRanges[5]?.values || []).flat();
     // VCA total: current VCA run uses local vcaFee; other directions read from SUMMARY.
-    const vcaTotalFee    = direction === "vca"      ? round2(vcaFee)
-                         : sumCells.vcaFeeRow       ? round2(sv(6)) : 0;
+    const vcaTotalFee    = isVcaDir   ? round2(vcaFee)
+                         : sumCells.vcaFeeRow ? round2(sv(6)) : 0;
     // VCA count: current VCA run uses matches.length directly; other directions read stored count.
-    const vcaStoredCount = direction === "vca" ? matches.length : sv(9);
+    const vcaStoredCount = isVcaDir ? matches.length : sv(9);
     // Interbank/intrabank: only meaningful for Magic Payment (needsInterbankSplit).
     // For all other partners, force both to 0 to prevent template formulas from leaking counts.
     let reportInterbankCount, reportIntrabankCount, reportDisburseCount;
@@ -3141,10 +3384,22 @@ app.post("/build-billing", async (req, res) => {
 
     // Top summary rows (per-category and grand total) + reconciliation col C — all computed VALUES.
     const totalUpdates = [];
-    if (sumCells.qrphTopRow)    totalUpdates.push({ range: `SUMMARY!B${sumCells.qrphTopRow}`,    values: [[qrphTotalFee]] });
+    if (sumCells.qrphTopRow)     totalUpdates.push({ range: `SUMMARY!B${sumCells.qrphTopRow}`,     values: [[qrphTotalFee]] });
     if (sumCells.disburseTopRow) totalUpdates.push({ range: `SUMMARY!B${sumCells.disburseTopRow}`, values: [[disburseTotalFee]] });
-    if (sumCells.vcaTopRow)     totalUpdates.push({ range: `SUMMARY!B${sumCells.vcaTopRow}`,     values: [[vcaTotalFee]] });
-    if (sumCells.totalTopRow)   totalUpdates.push({ range: `SUMMARY!B${sumCells.totalTopRow}`,   values: [[grandTotal]] });
+    if (sumCells.vcaTopRow)      totalUpdates.push({ range: `SUMMARY!B${sumCells.vcaTopRow}`,      values: [[vcaTotalFee]] });
+    // Also update direction-specific top rows if using new dynamic structure
+    if (sumCells.directionRows) {
+      for (const [dname, drows] of Object.entries(sumCells.directionRows)) {
+        if (drows.topRow) {
+          const dn = dname.toUpperCase();
+          const fee = dn === "VCA" ? vcaTotalFee : dn === "QRPH" ? qrphTotalFee : disburseTotalFee;
+          if (!totalUpdates.find(u => u.range === `SUMMARY!B${drows.topRow}`)) {
+            totalUpdates.push({ range: `SUMMARY!B${drows.topRow}`, values: [[fee]] });
+          }
+        }
+      }
+    }
+    if (sumCells.totalTopRow)    totalUpdates.push({ range: `SUMMARY!B${sumCells.totalTopRow}`,    values: [[grandTotal]] });
     if (sumCells.lessRow) {
       const qrphReconRow = sumCells.lessRow - 4;
       const disburseReconRow = sumCells.lessRow - 3;
@@ -3205,9 +3460,12 @@ app.post("/build-billing", async (req, res) => {
     // so showing Units=count with an average rate is misleading. For these, invoice shows Units=1,
     // Unit Price=total fee (exact, not an average). Flat types (flat, flat_rates, zero) keep count display.
     const FLAT_FEE_TYPES = new Set(['flat', 'zero', 'flat_rates']);
-    const qrphIsTiered    = !FLAT_FEE_TYPES.has(partnerFeeSpec?.qrph?.type);
-    const vcaIsTiered     = !FLAT_FEE_TYPES.has(partnerFeeSpec?.vca?.type);
-    const disburseIsTiered = !FLAT_FEE_TYPES.has((partnerFeeSpec?.disburse || {}).type);
+    const qrphDir = partnerDirs.find(d => d.id === "dir_qrph" || (d.mode === "incoming" && d.name.toUpperCase() !== "VCA"));
+    const vcaDir  = partnerDirs.find(d => d.id === "dir_vca" || d.name.toUpperCase() === "VCA");
+    const disbDir = partnerDirs.find(d => d.mode === "outgoing");
+    const qrphIsTiered    = !FLAT_FEE_TYPES.has((qrphDir?.feeSpec || partnerFeeSpec?.qrph || {}).type);
+    const vcaIsTiered     = !FLAT_FEE_TYPES.has((vcaDir?.feeSpec  || partnerFeeSpec?.vca  || {}).type);
+    const disburseIsTiered = !FLAT_FEE_TYPES.has((disbDir?.feeSpec || partnerFeeSpec?.disburse || {}).type);
     const pdfBuffer = await generateInvoiceFromTemplate({
       billingFolderId: dateFolder.id,
       invoiceNumber: effectiveInvoiceNumber,
@@ -3309,6 +3567,8 @@ app.post("/build-billing", async (req, res) => {
     res.json({
       ok: true,
       direction,
+      directionId: dir ? dir.id : null,
+      partner: { id: partner.id, name: partner.name },
       period: periodText,
       amountDue,
       grandTotal,
@@ -3338,7 +3598,6 @@ app.post("/build-billing", async (req, res) => {
       reportUrl: `https://docs.google.com/spreadsheets/d/${reportFileId}/edit`,
       invoicePdfFileId,
       invoicePdfUrl: `https://drive.google.com/file/d/${invoicePdfFileId}/view`,
-      partner: { id: partner.id, name: partner.name },
       header: {
         branchId: code,
         branchName: code,
