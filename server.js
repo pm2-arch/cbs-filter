@@ -31,6 +31,20 @@ const NETBANK_LOGO_PATH = path.join(__dirname, "public", "brand", "favicon-192.p
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+
+// Force no-cache on the main HTML page so browsers always get the latest JS/CSS
+// after a deploy. Static assets (brand, etc.) can still be cached normally.
+app.get("/", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
+app.get("/index.html", (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 app.use(express.static("public"));
 
 // ---- Uploaded file store (in-memory, 2-hour TTL) ----
@@ -2383,6 +2397,7 @@ app.get("/config", async (req, res) => {
   await refreshPartners().catch(() => {});
   if (!_partners) return res.status(503).json({ error: "Billing engine unavailable — partner data could not be loaded from Firestore" });
   const partnerList = _partners;
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.json({
     mainFolderId: CBS_MAIN_FOLDER_ID,
     billingParentFolderId: BILLING_PARENT_FOLDER_ID || null,
