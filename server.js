@@ -321,6 +321,75 @@ const PARTNER_SEED = [
   { id: "justpayto", name: "JustPayto Philippines Corporation", productId: "18d10c21-e36a-4b73-82b5-7b727ed408f6", productIds: [], invoicePrefix: "JustPayto", customerId: "", hasVca: false, settledOnlyOutgoing: true, excludeOutgoingPesonet: false, outgoingExcludeReasons: [], billedTo: { contact: "", company: "", address1: "", address2: "", country: "", email: "" }, fees: { qrph: { type: "pct_floor", pct: 0.007, floor: 1.50 }, vca: { type: "zero" }, disburse: { type: "flat_rates", interbank: 3.5, intrabank: 3.5 }, notes: { qrph: "0.7%, floor PHP 1.50", vca: "No VCA charge", disburse: "PHP 3.50 per transaction" } }, order: 9 },
 ];
 
+// ---------------------------------------------------------------------------
+// Rule Registry — central catalog of detection rule types.
+// Each entry defines how a rule renders in the admin portal and executes in
+// the billing engine. Add new rule types here; the portal auto-renders them.
+// ---------------------------------------------------------------------------
+const RULE_REGISTRY = {
+  transfer_mode_filter: {
+    label: "Transfer Mode Filter (include only)",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Only process rows where Transfer Mode matches one of the selected values.",
+    params: [
+      { key: "modes", label: "Included Transfer Modes", type: "multicheck", options: [
+        { value: "QR_P2M",  label: "QR_P2M"  },
+        { value: "QR_P2P",  label: "QR_P2P"  },
+        { value: "P2P",     label: "P2P"      },
+        { value: "PESONET", label: "PESONET"  },
+        { value: "",        label: "Blank / Empty TM" },
+      ]},
+    ],
+  },
+  channel_filter: {
+    label: "Channel Filter (include only)",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Only process rows where Channel matches one of the selected values.",
+    params: [
+      { key: "channels", label: "Included Channels", type: "multicheck", options: [
+        { value: "INSTAPAY", label: "INSTAPAY" },
+        { value: "PESONET",  label: "PESONET"  },
+      ]},
+    ],
+  },
+  channel_exclude: {
+    label: "Channel Exclude",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Exclude rows where Channel matches any of the selected values.",
+    params: [
+      { key: "channels", label: "Excluded Channels", type: "multicheck", options: [
+        { value: "PESONET",  label: "PESONET"  },
+        { value: "INSTAPAY", label: "INSTAPAY" },
+      ]},
+    ],
+  },
+  status_filter: {
+    label: "Status Filter (include only)",
+    directions: ["outgoing"],
+    description: "Only process rows where Status matches the selected value. Incoming and VCA always require SETTLED — that is automatic and not configurable.",
+    params: [
+      { key: "status", label: "Required Status", type: "select", options: [
+        { value: "SETTLED", label: "SETTLED" },
+        { value: "PENDING", label: "PENDING" },
+      ]},
+    ],
+  },
+  ref_code_required: {
+    label: "Reference Code — must not be blank",
+    directions: ["incoming", "vca"],
+    description: "Exclude rows where the Transfer Reference Code column is blank or empty.",
+    params: [],
+  },
+  reason_code_exclude: {
+    label: "Reason Code Exclude",
+    directions: ["outgoing"],
+    description: "Exclude rows whose Provider Status matches any of the listed codes.",
+    params: [
+      { key: "codes", label: "Excluded Codes (comma-separated)", type: "text_list", placeholder: "e.g. FF02, FF10, PAYMENT HUB GATEWAY ERROR" },
+    ],
+  },
+};
+
 // Build a runtime fee function from a stored fee spec.
 function buildFeeFunc(spec) {
   if (!spec) return () => 0;
@@ -485,6 +554,69 @@ async function patchMissingVcaConfig() {
   }
 }
 
+// One-time migration: convert old flat detection fields (vcaConfig, incomingConfig,
+// settledOnlyOutgoing, excludeOutgoingPesonet, outgoingExcludeReasons, outgoingTransferModes)
+// into the new detectionRules array format. Runs at startup; skips already-migrated partners.
+async function patchDetectionRules() {
+  const snap = await db.collection(PARTNERS_COLLECTION).get();
+  const batch = db.batch();
+  let count = 0;
+
+  for (const doc of snap.docs) {
+    const p = doc.data();
+    if (Array.isArray(p.detectionRules)) continue; // already migrated
+
+    let ruleSeq = 1;
+    const makeId = () => `rule_${String(ruleSeq++).padStart(3, "0")}`;
+    const rules = [];
+
+    if (p.hasVca) {
+      // INCOMING: channel + TM filters (only meaningful for VCA partners)
+      const ic = p.incomingConfig || {};
+      const icCh = Array.isArray(ic.channels) && ic.channels.length > 0 ? ic.channels : ["INSTAPAY"];
+      const icTm = Array.isArray(ic.transferModes) && ic.transferModes.length > 0 ? ic.transferModes : ["QR_P2M"];
+      rules.push({ id: makeId(), type: "channel_filter", direction: "incoming", enabled: true, params: { channels: icCh } });
+      rules.push({ id: makeId(), type: "transfer_mode_filter", direction: "incoming", enabled: true, params: { modes: icTm } });
+      // VCA: channel + TM + optional ref code requirement
+      const vc = p.vcaConfig || {};
+      const vcCh = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
+      const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
+      const requireRef = vc.requireRefCode !== false;
+      rules.push({ id: makeId(), type: "channel_filter", direction: "vca", enabled: true, params: { channels: vcCh } });
+      if (vcTm.length > 0) {
+        rules.push({ id: makeId(), type: "transfer_mode_filter", direction: "vca", enabled: true, params: { modes: vcTm } });
+      }
+      if (requireRef) {
+        rules.push({ id: makeId(), type: "ref_code_required", direction: "vca", enabled: true, params: {} });
+      }
+    }
+
+    // OUTGOING rules
+    if (p.settledOnlyOutgoing) {
+      rules.push({ id: makeId(), type: "status_filter", direction: "outgoing", enabled: true, params: { status: "SETTLED" } });
+    }
+    if (p.excludeOutgoingPesonet) {
+      rules.push({ id: makeId(), type: "channel_exclude", direction: "outgoing", enabled: true, params: { channels: ["PESONET"] } });
+    }
+    if (Array.isArray(p.outgoingExcludeReasons) && p.outgoingExcludeReasons.length > 0) {
+      rules.push({ id: makeId(), type: "reason_code_exclude", direction: "outgoing", enabled: true, params: { codes: p.outgoingExcludeReasons } });
+    }
+    if (Array.isArray(p.outgoingTransferModes) && p.outgoingTransferModes.length > 0) {
+      rules.push({ id: makeId(), type: "transfer_mode_filter", direction: "outgoing", enabled: true, params: { modes: p.outgoingTransferModes } });
+    }
+
+    batch.update(doc.ref, { detectionRules: rules });
+    count++;
+  }
+
+  if (count > 0) {
+    await batch.commit();
+    console.log(`[init] Migrated detectionRules for ${count} partner(s) from flat fields.`);
+  } else {
+    console.log("[init] All partners already have detectionRules — migration not needed.");
+  }
+}
+
 async function loadFromFirestore() {
   const snap = await db.collection(PARTNERS_COLLECTION).orderBy("order").get();
   return snap.docs.map(d => ({ ...d.data() }));
@@ -512,6 +644,7 @@ async function initPartners() {
   await patchMissingVcaConfig();
   await patchMissingIncomingConfig();
   await patchAioFeeSpec();
+  await patchDetectionRules();
   const partners = await loadFromFirestore();
   _partners = partners;
   _feeRulesMap = {};
@@ -563,6 +696,17 @@ function validatePartnerInput(body) {
     outgoing: String(mn.outgoing || "").trim(),
     intl: String(mn.intl || "").trim(),
   };
+  // detectionRules — new extensible rule array. null means "not provided by caller;
+  // preserve existing value in Firestore" (handled in PUT route). Empty array = explicit clear.
+  const detectionRules = Array.isArray(body.detectionRules)
+    ? body.detectionRules.map(r => ({
+        id: String(r.id || `rule_${Date.now()}`),
+        type: String(r.type || ""),
+        direction: String(r.direction || ""),
+        enabled: r.enabled !== false,
+        params: (r.params && typeof r.params === "object") ? r.params : {},
+      }))
+    : null;
   return {
     id,
     name,
@@ -579,6 +723,7 @@ function validatePartnerInput(body) {
       ? body.outgoingExcludeReasons.map(s => String(s).trim()).filter(Boolean)
       : (body.outgoingExcludeReasons ? String(body.outgoingExcludeReasons).split(",").map(s => s.trim()).filter(Boolean) : []),
     outgoingTransferModes,
+    detectionRules,
     billedTo,
     fees,
     mechanicsNotes,
@@ -603,6 +748,117 @@ function normalizeBilledTo(src) {
     country: String(s.country || ""),
     email: String(s.email || ""),
   };
+}
+
+// Build the directionFilters array for one billing direction using partner.detectionRules.
+// SETTLED is automatically applied for incoming/vca; outgoing is rule-driven.
+// Falls back to old flat fields for partners not yet migrated (startup safety net).
+function buildDirectionFilters(partner, direction, allProductCodes, code) {
+  const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
+  const filters = [
+    allProductCodes.length > 1
+      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
+      : { column: "A", altColumns: ["branch_id"], equals: code },
+  ];
+  // SETTLED is always required for incoming/VCA — not configurable
+  if (direction !== "outgoing") {
+    filters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
+  }
+
+  if (Array.isArray(partner.detectionRules)) {
+    // Rule-based detection: read from detectionRules array
+    const activeRules = partner.detectionRules.filter(r => r.enabled !== false && r.direction === direction);
+    for (const rule of activeRules) {
+      const p = rule.params || {};
+      switch (rule.type) {
+        case "channel_filter":
+          if (Array.isArray(p.channels) && p.channels.length > 0) {
+            filters.push(p.channels.length === 1
+              ? { column: "channel", altColumns: ["Channel"], equals: p.channels[0], caseSensitive: false }
+              : { column: "channel", altColumns: ["Channel"], includeValues: p.channels, caseSensitive: false });
+          }
+          break;
+        case "channel_exclude":
+          if (Array.isArray(p.channels) && p.channels.length > 0) {
+            for (const ch of p.channels) {
+              filters.push({ column: "channel", altColumns: ["Channel"], notEquals: ch, caseSensitive: false });
+            }
+          }
+          break;
+        case "transfer_mode_filter":
+          if (Array.isArray(p.modes) && p.modes.length > 0) {
+            filters.push(p.modes.length === 1
+              ? { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: p.modes[0], caseSensitive: false }
+              : { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: p.modes, caseSensitive: false });
+          }
+          break;
+        case "status_filter":
+          if (p.status) {
+            filters.push({ column: "Status", altColumns: ["status"], equals: p.status, caseSensitive: false });
+          }
+          break;
+        case "ref_code_required":
+          filters.push({
+            column: "Transfer reference code (if alias used)",
+            altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
+            notEquals: "", caseSensitive: false,
+          });
+          break;
+        case "reason_code_exclude":
+          if (Array.isArray(p.codes) && p.codes.length > 0) {
+            filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: p.codes, caseSensitive: false });
+          }
+          break;
+      }
+    }
+  } else {
+    // Legacy fallback: old flat fields (for partners not yet migrated by patchDetectionRules)
+    const partnerHasVca = !!partner.hasVca;
+    if (direction === "outgoing" && partner.settledOnlyOutgoing) {
+      filters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
+    }
+    if (direction === "outgoing" && partner.excludeOutgoingPesonet) {
+      filters.push({ column: "channel", altColumns: ["Channel"], notEquals: "PESONET", caseSensitive: false });
+    }
+    if (direction === "outgoing" && Array.isArray(partner.outgoingExcludeReasons) && partner.outgoingExcludeReasons.length > 0) {
+      filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: partner.outgoingExcludeReasons, caseSensitive: false });
+    }
+    if (direction === "outgoing" && Array.isArray(partner.outgoingTransferModes) && partner.outgoingTransferModes.length > 0) {
+      filters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: partner.outgoingTransferModes, caseSensitive: false });
+    }
+    if (partnerHasVca && direction === "incoming") {
+      const ic = (partner.incomingConfig && typeof partner.incomingConfig === "object") ? partner.incomingConfig : {};
+      const icCh = Array.isArray(ic.channels) && ic.channels.length > 0 ? ic.channels : ["INSTAPAY"];
+      const icTm = Array.isArray(ic.transferModes) && ic.transferModes.length > 0 ? ic.transferModes : ["QR_P2M"];
+      filters.push(icCh.length === 1
+        ? { column: "channel", altColumns: ["Channel"], equals: icCh[0], caseSensitive: false }
+        : { column: "channel", altColumns: ["Channel"], includeValues: icCh, caseSensitive: false });
+      filters.push(icTm.length === 1
+        ? { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: icTm[0], caseSensitive: false }
+        : { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: icTm, caseSensitive: false });
+    }
+    if (partnerHasVca && direction === "vca") {
+      const vc = (partner.vcaConfig && typeof partner.vcaConfig === "object") ? partner.vcaConfig : {};
+      const vcCh = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
+      const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
+      const requireRef = vc.requireRefCode !== false;
+      filters.push(vcCh.length === 1
+        ? { column: "channel", altColumns: ["Channel"], equals: vcCh[0], caseSensitive: false }
+        : { column: "channel", altColumns: ["Channel"], includeValues: vcCh, caseSensitive: false });
+      if (vcTm.length > 0) {
+        filters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: vcTm, caseSensitive: false });
+      }
+      if (requireRef) {
+        filters.push({
+          column: "Transfer reference code (if alias used)",
+          altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
+          notEquals: "", caseSensitive: false,
+        });
+      }
+    }
+  }
+
+  return filters;
 }
 
 function productCode(partner) {
@@ -1874,6 +2130,11 @@ app.get("/admin/logout", (req, res) => {
 
 app.get("/admin", requireAdmin, (_req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
 
+// Expose the rule registry to the admin portal (no auth required — it's metadata only)
+app.get("/api/rule-registry", (_req, res) => {
+  res.json(RULE_REGISTRY);
+});
+
 app.get("/admin/partners", requireAdmin, async (_req, res) => {
   try {
     const snap = await db.collection(PARTNERS_COLLECTION).orderBy("order").get();
@@ -1904,6 +2165,14 @@ app.put("/admin/partners/:id", requireAdmin, async (req, res) => {
     const existing = await db.collection(PARTNERS_COLLECTION).doc(id).get();
     const currentOrder = existing.exists ? (existing.data().order || 0) : Date.now();
     const data = validatePartnerInput({ ...req.body, id, order: currentOrder });
+    // Preserve existing detectionRules if admin did not provide them (null = not sent)
+    if (data.detectionRules === null) {
+      if (existing.exists && Array.isArray(existing.data().detectionRules)) {
+        data.detectionRules = existing.data().detectionRules;
+      } else {
+        delete data.detectionRules;
+      }
+    }
     await db.collection(PARTNERS_COLLECTION).doc(id).set(data);
     await refreshPartners();
     res.json({ ok: true });
@@ -2204,85 +2473,13 @@ app.post("/build-billing", async (req, res) => {
 
     // ---- Match source rows (one or many source files merged) ----
     stage = "matching source rows";
-    // Build filters for this direction.
-    // QRPH and VCA count only SETTLED inward transactions.
-    // DISBURSE (outgoing): by default bills every attempt; v5-philippines requires SETTLED only per billing spec.
+    // Filters built dynamically from partner.detectionRules (Rule Registry architecture).
+    // QRPH/VCA: SETTLED is automatic. DISBURSE: configured via status_filter rule.
     // For partners with multiple product IDs (e.g. AIO), column A must match ANY of them.
     const allProductCodes = (Array.isArray(partner.productIds) && partner.productIds.length > 1)
       ? partner.productIds.map(pid => `(Prod)${pid}`)
       : [code];
-    const directionFilters = [
-      allProductCodes.length > 1
-        ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
-        : { column: "A", altColumns: ["branch_id"], equals: code },
-    ];
-    if (direction !== "outgoing") {
-      directionFilters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
-    }
-    if (direction === "outgoing" && partner.settledOnlyOutgoing) {
-      directionFilters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
-    }
-    const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
-    // PESONET outgoing = Not Applicable for Magic Payment, Hopay, Payeasy (billing spec).
-    // If the CBS file has no channel column, filter is skipped (safe — no rows excluded).
-    if (direction === "outgoing" && partner.excludeOutgoingPesonet) {
-      directionFilters.push({ column: "channel", altColumns: ["Channel"], notEquals: "PESONET", caseSensitive: false });
-    }
-    // Outgoing reason code exclusion (e.g. Hopay: FF02, FF10 etc.)
-    // If the CBS file has no Reason column, filter is skipped (safe — no rows excluded).
-    if (direction === "outgoing" && Array.isArray(partner.outgoingExcludeReasons) && partner.outgoingExcludeReasons.length > 0) {
-      directionFilters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: partner.outgoingExcludeReasons, caseSensitive: false });
-    }
-    // Outgoing transfer mode filter — configurable per partner via Partner Admin → Detection Rules → Outgoing.
-    // Empty array (default) = no TM filter (all outgoing rows included regardless of transfer mode).
-    if (direction === "outgoing" && Array.isArray(partner.outgoingTransferModes) && partner.outgoingTransferModes.length > 0) {
-      directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: partner.outgoingTransferModes, caseSensitive: false });
-    }
-    // For V5/TopJuan: the CBS file mixes INSTAPAY and PESONET incoming rows in one tab.
-    // Incoming (QRPH): INSTAPAY only, TM = QR_P2M. PESONET incoming is not billed.
-    // VCA: channel and TM rules differ by partner — see blocks below.
-    if (partnerHasVca && direction === "incoming") {
-      // Use Firestore-stored incomingConfig (set via Partner Admin → Detection Rules → QRPh section).
-      // Defaults to INSTAPAY + QR_P2M if not yet configured. Patched by patchMissingIncomingConfig() at startup.
-      const ic = (partner.incomingConfig && typeof partner.incomingConfig === "object") ? partner.incomingConfig : {};
-      const icChannels = Array.isArray(ic.channels) && ic.channels.length > 0 ? ic.channels : ["INSTAPAY"];
-      const icTm       = Array.isArray(ic.transferModes) && ic.transferModes.length > 0 ? ic.transferModes : ["QR_P2M"];
-      if (icChannels.length === 1) {
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: icChannels[0], caseSensitive: false });
-      } else {
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: icChannels, caseSensitive: false });
-      }
-      if (icTm.length === 1) {
-        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: icTm[0], caseSensitive: false });
-      } else {
-        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: icTm, caseSensitive: false });
-      }
-    }
-    if (partnerHasVca && direction === "vca") {
-      // Fully data-driven: all VCA detection rules come from vcaConfig stored in Firestore.
-      // Set via Admin Portal → Detection Rules → VCA tab. No per-partner hardcoding.
-      // patchMissingVcaConfig() ensures every hasVca partner always has a vcaConfig on startup.
-      const vc = (partner.vcaConfig && typeof partner.vcaConfig === "object") ? partner.vcaConfig : {};
-      const vcChannels = Array.isArray(vc.channels) && vc.channels.length > 0 ? vc.channels : ["INSTAPAY"];
-      const vcTm = Array.isArray(vc.transferModes) ? vc.transferModes : ["P2P", "QR_P2P"];
-      const requireRef = vc.requireRefCode !== false;
-
-      if (vcChannels.length === 1) {
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], equals: vcChannels[0], caseSensitive: false });
-      } else {
-        directionFilters.push({ column: "channel", altColumns: ["Channel"], includeValues: vcChannels, caseSensitive: false });
-      }
-      if (vcTm.length > 0) {
-        directionFilters.push({ column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: vcTm, caseSensitive: false });
-      }
-      if (requireRef) {
-        directionFilters.push({
-          column: "Transfer reference code (if alias used)",
-          altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
-          notEquals: "", caseSensitive: false,
-        });
-      }
-    }
+    const directionFilters = buildDirectionFilters(partner, direction, allProductCodes, code);
     let sourceHeader = null;
     let matches = [];
     for (const fid of fileIds) {
