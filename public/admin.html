@@ -931,8 +931,8 @@ function openEdit(id) {
   document.getElementById('f-customerId').value = p.customerId || '';
   const extraIds = (p.productIds || []).filter(id2 => id2 !== p.productId);
   document.getElementById('f-productIds').value = extraIds.join('\n');
-  // Detection Rules tab fields
-  document.getElementById('f-hasVca').checked = !!p.hasVca;
+  // Detection Rules tab fields (element may be absent if tab was removed)
+  const hasVcaEl = document.getElementById('f-hasVca'); if (hasVcaEl) hasVcaEl.checked = !!p.hasVca;
   loadRulesFromPartner(p);
   loadDirectionsFromPartner(p);
   // Mechanics notes (guarded — elements may not exist if tabs were removed)
