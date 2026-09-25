@@ -836,7 +836,11 @@ function renderDirBlocks() {
   const dirs = (state.partner && state.partner.directions) || [];
   const container = $('#dir-blocks');
   if (!dirs.length) {
-    container.innerHTML = '<span class="muted">No directions configured for this partner. Configure directions in Partner Admin first.</span>';
+    container.innerHTML = `<div class="note err" style="font-size:.8rem">
+      [debug] No directions found in state.partner.<br>
+      partner id: ${state.partner ? escHtml(state.partner.id) : 'null'}<br>
+      directions field: ${state.partner ? JSON.stringify(state.partner.directions) : 'n/a'}
+    </div>`;
     return;
   }
   // Initialize dirState for each direction
@@ -1214,6 +1218,11 @@ function pickPartner(p){
   ['#s-pick','#s-gen'].forEach(x=>$(x).hidden=true);
   renderSteps('month'); show('#s-month');
   smoothScrollTo('#s-month');
+  // DEBUG: show direction count to diagnose loading issue — remove after fix confirmed
+  const dirs = Array.isArray(p.directions) ? p.directions : [];
+  const dbg = $('#monthDebug') || (() => { const d = document.createElement('p'); d.id='monthDebug'; d.style.cssText='font-size:.75rem;color:#888;margin:4px 0 0'; $('#s-month').querySelector('p.hint').after(d); return d; })();
+  dbg.textContent = `[debug] ${p.name}: ${dirs.length} direction(s) — ${dirs.map(d=>d.name||d.id).join(', ') || 'none'}`;
+
   // Show only months for the picked year.
   const monthsForYear = state.monthFolders.filter(m =>
     new RegExp(`\\b${state.year}\\b`).test(m.name)
