@@ -349,19 +349,83 @@ const PARTNER_SEED = [
 // Each entry defines how a rule renders in the admin portal and executes in
 // the billing engine. Add new rule types here; the portal auto-renders them.
 // ---------------------------------------------------------------------------
+
+// Maps admin rule column keys → actual CBS column names (primary + alternates).
+// Used by column_include_filter and column_exclude_filter.
+const CBS_COLUMN_MAP = {
+  transfer_mode:             { primary: "Transfer mode",                              alts: ["Transfer Mode", "transfer_mode", "transfer mode"] },
+  status:                    { primary: "Status",                                     alts: ["status"] },
+  reason:                    { primary: "Reason",                                     alts: ["reason"] },
+  channel:                   { primary: "Channel",                                    alts: ["channel"] },
+  reference_number:          { primary: "Reference number",                           alts: ["Reference Number", "reference_number"] },
+  recipient_account_number:  { primary: "Recipient account number",                   alts: ["Recipient account number (if alias used)"] },
+  sender_account_number:     { primary: "Sender account number",                      alts: [] },
+  sender_institution_name:   { primary: "Sender institution name",                    alts: ["Recipient institution name"] },
+  sender_institution_code:   { primary: "Sender institution code",                    alts: ["Recipient institution code"] },
+  reference_label:           { primary: "Reference label",                            alts: ["reference_label"] },
+  store_label:               { primary: "Store label",                                alts: ["store_label"] },
+  full_recipient_number:     { primary: "Full recipient number (if alias used)",      alts: ["Full recipient number"] },
+  transfer_reference_code:   { primary: "Transfer reference code (if alias used)",    alts: ["Transfer reference code", "transfer_reference_code", "transfer_ref_code"] },
+  provider_status:           { primary: "Provider Status",                            alts: ["provider_status", "Provider status"] },
+  success_status_code:       { primary: "Success status code",                        alts: [] },
+  provider_reference_number: { primary: "Provider reference number",                  alts: ["Provider Reference Number"] },
+};
+
+// Translates "(blank)" token to "" so users can match empty-cell rows.
+function processFilterValues(vals) {
+  return (Array.isArray(vals) ? vals : []).map(v => v === "(blank)" ? "" : v);
+}
+
+// Column selector options list (reused across two rule types below).
+const COLUMN_OPTIONS = [
+  { value: "transfer_mode",             label: "Transfer Mode"                            },
+  { value: "status",                    label: "Status"                                   },
+  { value: "reason",                    label: "Reason"                                   },
+  { value: "channel",                   label: "Channel"                                  },
+  { value: "reference_number",          label: "Reference Number"                         },
+  { value: "recipient_account_number",  label: "Recipient Account Number"                 },
+  { value: "sender_account_number",     label: "Sender Account Number"                    },
+  { value: "sender_institution_name",   label: "Sender / Recipient Institution Name"      },
+  { value: "sender_institution_code",   label: "Sender / Recipient Institution Code"      },
+  { value: "reference_label",           label: "Reference Label"                          },
+  { value: "store_label",               label: "Store Label"                              },
+  { value: "full_recipient_number",     label: "Full Recipient Number (if alias used)"    },
+  { value: "transfer_reference_code",   label: "Transfer Reference Code (if alias used)"  },
+  { value: "provider_status",           label: "Provider Status"                          },
+  { value: "success_status_code",       label: "Success Status Code (Outgoing)"           },
+  { value: "provider_reference_number", label: "Provider Reference Number (Outgoing)"     },
+];
+
 const RULE_REGISTRY = {
+  // ── Generic flexible column filters ─────────────────────────────────────────
+  column_include_filter: {
+    label: "Column Filter — Include Only",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Include only rows where the chosen column matches one or more values. Comma-separate values. Use (blank) to match empty/null cells.",
+    params: [
+      { key: "column", label: "Column", type: "select", options: COLUMN_OPTIONS },
+      { key: "values", label: "Values to include (comma-separated)", type: "text_list",
+        placeholder: "e.g. QR_P2M, QR_P2P  — use (blank) for empty cells" },
+    ],
+  },
+  column_exclude_filter: {
+    label: "Column Filter — Exclude Values",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Exclude rows where the chosen column matches any of the specified values. Comma-separate values. Use (blank) to match empty/null cells.",
+    params: [
+      { key: "column", label: "Column", type: "select", options: COLUMN_OPTIONS },
+      { key: "values", label: "Values to exclude (comma-separated)", type: "text_list",
+        placeholder: "e.g. REJECTED, PENDING  — use (blank) for empty cells" },
+    ],
+  },
+  // ── Preset rules (kept for backward compatibility) ───────────────────────────
   transfer_mode_filter: {
     label: "Transfer Mode Filter (include only)",
     directions: ["incoming", "vca", "outgoing"],
-    description: "Only process rows where Transfer Mode matches one of the selected values.",
+    description: "Only process rows where Transfer Mode matches one of the selected values. Common values: QR_P2M, QR_P2P, P2P, PESONET. Use (blank) for empty transfer mode.",
     params: [
-      { key: "modes", label: "Included Transfer Modes", type: "multicheck", options: [
-        { value: "QR_P2M",  label: "QR_P2M"  },
-        { value: "QR_P2P",  label: "QR_P2P"  },
-        { value: "P2P",     label: "P2P"      },
-        { value: "PESONET", label: "PESONET"  },
-        { value: "",        label: "Blank / Empty TM" },
-      ]},
+      { key: "modes", label: "Included Transfer Modes (comma-separated)", type: "text_list",
+        placeholder: "e.g. QR_P2M, QR_P2P, P2P, PESONET — use (blank) for empty" },
     ],
   },
   channel_filter: {
@@ -388,13 +452,11 @@ const RULE_REGISTRY = {
   },
   status_filter: {
     label: "Status Filter (include only)",
-    directions: ["outgoing"],
-    description: "Only process rows where Status matches the selected value. Incoming and VCA always require SETTLED — that is automatic and not configurable.",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Only process rows where Status matches any of the specified values. Incoming/VCA are auto-filtered to SETTLED — this rule adds further or overrides for outgoing. Flexible: type any status value.",
     params: [
-      { key: "status", label: "Required Status", type: "select", options: [
-        { value: "SETTLED", label: "SETTLED" },
-        { value: "PENDING", label: "PENDING" },
-      ]},
+      { key: "statuses", label: "Required Status values (comma-separated)", type: "text_list",
+        placeholder: "e.g. SETTLED, PROCESSING_OK" },
     ],
   },
   ref_code_required: {
@@ -404,11 +466,12 @@ const RULE_REGISTRY = {
     params: [],
   },
   reason_code_exclude: {
-    label: "Reason Code Exclude",
-    directions: ["outgoing"],
-    description: "Exclude rows whose Provider Status matches any of the listed codes.",
+    label: "Reason / Provider Status — Exclude Values",
+    directions: ["incoming", "vca", "outgoing"],
+    description: "Exclude rows whose Provider Status matches any of the listed codes or reason strings.",
     params: [
-      { key: "codes", label: "Excluded Codes (comma-separated)", type: "text_list", placeholder: "e.g. FF02, FF10, PAYMENT HUB GATEWAY ERROR" },
+      { key: "codes", label: "Excluded values (comma-separated)", type: "text_list",
+        placeholder: "e.g. FF02, FF10, 9910, AM14, PAYMENT HUB GATEWAY ERROR" },
     ],
   },
 };
@@ -880,18 +943,20 @@ function buildDirectionFilters(partner, direction, allProductCodes, code) {
             }
           }
           break;
-        case "transfer_mode_filter":
-          if (Array.isArray(p.modes) && p.modes.length > 0) {
-            filters.push(p.modes.length === 1
-              ? { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: p.modes[0], caseSensitive: false }
-              : { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: p.modes, caseSensitive: false });
-          }
+        case "transfer_mode_filter": {
+          const modes = processFilterValues(p.modes);
+          if (modes.length > 0) filters.push(modes.length === 1
+            ? { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, equals: modes[0], caseSensitive: false }
+            : { column: "transfer_mode", altColumns: TRANSFER_MODE_ALTS, includeValues: modes, caseSensitive: false });
           break;
-        case "status_filter":
-          if (p.status) {
-            filters.push({ column: "Status", altColumns: ["status"], equals: p.status, caseSensitive: false });
-          }
+        }
+        case "status_filter": {
+          const statuses = processFilterValues(p.statuses || (p.status ? [p.status] : []));
+          if (statuses.length > 0) filters.push(statuses.length === 1
+            ? { column: "Status", altColumns: ["status"], equals: statuses[0], caseSensitive: false }
+            : { column: "Status", altColumns: ["status"], includeValues: statuses, caseSensitive: false });
           break;
+        }
         case "ref_code_required":
           filters.push({
             column: "Transfer reference code (if alias used)",
@@ -899,11 +964,25 @@ function buildDirectionFilters(partner, direction, allProductCodes, code) {
             notEquals: "", caseSensitive: false,
           });
           break;
-        case "reason_code_exclude":
-          if (Array.isArray(p.codes) && p.codes.length > 0) {
-            filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: p.codes, caseSensitive: false });
-          }
+        case "reason_code_exclude": {
+          const codes = processFilterValues(p.codes);
+          if (codes.length > 0) filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: codes, caseSensitive: false });
           break;
+        }
+        case "column_include_filter": {
+          const colDef = CBS_COLUMN_MAP[p.column];
+          const vals = processFilterValues(p.values);
+          if (colDef && vals.length > 0) filters.push(vals.length === 1
+            ? { column: colDef.primary, altColumns: colDef.alts, equals: vals[0], caseSensitive: false }
+            : { column: colDef.primary, altColumns: colDef.alts, includeValues: vals, caseSensitive: false });
+          break;
+        }
+        case "column_exclude_filter": {
+          const colDef = CBS_COLUMN_MAP[p.column];
+          const vals = processFilterValues(p.values);
+          if (colDef && vals.length > 0) filters.push({ column: colDef.primary, altColumns: colDef.alts, excludeValues: vals, caseSensitive: false });
+          break;
+        }
       }
     }
   } else {
@@ -973,8 +1052,10 @@ function buildFiltersForDirection(dir, allProductCodes, code) {
   for (const rule of activeRules) {
     switch (rule.type) {
       case "transfer_mode_filter": {
-        const modes = Array.isArray(rule.params?.modes) ? rule.params.modes : [];
-        if (modes.length > 0) filters.push({ column: "Transfer mode", altColumns: TRANSFER_MODE_ALTS, includeValues: modes });
+        const modes = processFilterValues(rule.params?.modes);
+        if (modes.length > 0) filters.push(modes.length === 1
+          ? { column: "Transfer mode", altColumns: TRANSFER_MODE_ALTS, equals: modes[0], caseSensitive: false }
+          : { column: "Transfer mode", altColumns: TRANSFER_MODE_ALTS, includeValues: modes, caseSensitive: false });
         break;
       }
       case "channel_filter": {
@@ -988,20 +1069,35 @@ function buildFiltersForDirection(dir, allProductCodes, code) {
         break;
       }
       case "status_filter": {
-        const status = rule.params?.status;
-        if (status) filters.push({ column: "Status", altColumns: ["status"], equals: status, caseSensitive: false });
+        const statuses = processFilterValues(rule.params?.statuses || (rule.params?.status ? [rule.params.status] : []));
+        if (statuses.length > 0) filters.push(statuses.length === 1
+          ? { column: "Status", altColumns: ["status"], equals: statuses[0], caseSensitive: false }
+          : { column: "Status", altColumns: ["status"], includeValues: statuses, caseSensitive: false });
         break;
       }
       case "ref_code_required":
         filters.push({
           column: "Transfer reference code (if alias used)",
           altColumns: ["transfer_reference_code", "Transfer reference code", "transfer_ref_code", "Reference number", "reference_number"],
-          notEquals: "", caseSensitive: false,
-        });
+          notEquals: "", caseSensitive: false,        });
         break;
       case "reason_code_exclude": {
-        const codes = Array.isArray(rule.params?.codes) ? rule.params.codes : [];
+        const codes = processFilterValues(rule.params?.codes);
         if (codes.length > 0) filters.push({ column: "Provider Status", altColumns: ["provider_status", "Provider status"], excludeValues: codes, caseSensitive: false });
+        break;
+      }
+      case "column_include_filter": {
+        const colDef = CBS_COLUMN_MAP[rule.params?.column];
+        const vals = processFilterValues(rule.params?.values);
+        if (colDef && vals.length > 0) filters.push(vals.length === 1
+          ? { column: colDef.primary, altColumns: colDef.alts, equals: vals[0], caseSensitive: false }
+          : { column: colDef.primary, altColumns: colDef.alts, includeValues: vals, caseSensitive: false });
+        break;
+      }
+      case "column_exclude_filter": {
+        const colDef = CBS_COLUMN_MAP[rule.params?.column];
+        const vals = processFilterValues(rule.params?.values);
+        if (colDef && vals.length > 0) filters.push({ column: colDef.primary, altColumns: colDef.alts, excludeValues: vals, caseSensitive: false });
         break;
       }
     }
