@@ -2400,6 +2400,7 @@ app.get("/config", async (req, res) => {
         customerId: p.customerId,
         billedTo: normalizeBilledTo(p.billedTo),
         hasVca: !!p.hasVca,
+        directions: Array.isArray(p.directions) ? p.directions : [],
       };
     }),
     user: { email },
