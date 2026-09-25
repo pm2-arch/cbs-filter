@@ -481,18 +481,6 @@
       </div>
     </div>
 
-    <div class="upload-dir" id="uz-vca-block">
-      <label class="fld">VCA Files <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <div class="upload-zone" id="uz-vca"
-           ondragover="uzDragOver(event,'vca')"
-           ondrop="uzDrop(event,'vca')"
-           ondragleave="uzDragLeave(event,'vca')">
-        <input type="file" id="uf-vca" multiple accept=".xlsx,.xls,.csv"
-               onchange="uzFilePick('vca',this)">
-        <div class="uz-label">📂 Click to browse or drag files here</div>
-        <div id="ul-vca" class="upload-file-list"></div>
-      </div>
-    </div>
 
     <div class="row" style="margin-top:18px">
       <button class="go" id="btnUploadContinue" onclick="handleUploadContinue()">Upload &amp; Continue →</button>
@@ -534,38 +522,10 @@
     <p class="hint">Tap to select <b>one or more</b> date files for either direction (each file = one date),
       then run the count check. Tapping again de-selects. All selected files are checked in parallel.</p>
 
-    <div class="dir-block" id="vcaDirBlock" hidden style="margin-top:8px">
-      <label class="fld">VCA (P2P)</label>
-      <div id="vcaFolder" class="note" style="margin:4px 0 10px"></div>
-      <div id="vcaDateBlock" hidden>
-        <div class="grid" id="vcaDates"></div>
-      </div>
-      <div id="vcaCountBox" style="margin-top:8px"></div>
-    </div>
-
-    <div class="dir-block" style="margin-top:8px">
-      <label class="fld">Incoming Consolidated</label>
-      <div id="incomingFolder" class="note" style="margin:4px 0 10px"></div>
-      <div id="incomingDateBlock" hidden>
-        <div class="grid" id="incomingDates"></div>
-      </div>
-      <div id="incomingCountBox" style="margin-top:8px"></div>
-    </div>
-
-    <div class="dir-block" style="margin-top:18px">
-      <label class="fld">Outgoing Consolidated</label>
-      <div id="outgoingFolder" class="note" style="margin:4px 0 10px"></div>
-      <div id="outgoingDateBlock" hidden>
-        <div class="grid" id="outgoingDates"></div>
-      </div>
-      <div id="outgoingCountBox" style="margin-top:8px"></div>
-    </div>
+    <div id="dir-blocks"></div>
 
     <div class="row" style="margin-top:18px">
       <button class="go" id="btnRunCounts" disabled>Run count check</button>
-      <button class="ghost" id="btnSkipVca" hidden>Skip VCA</button>
-      <button class="ghost" id="btnSkipIncoming">Skip Incoming</button>
-      <button class="ghost" id="btnSkipOutgoing">Skip Outgoing</button>
     </div>
     <div style="margin-top:12px">
       <button class="go" id="btnGenMonth" hidden style="background:var(--nb-teal,#0d7a6e)">⚡ Generate Entire Month</button>
@@ -683,8 +643,9 @@ const state = {
   //   files:   [{id,name,...}, ...]
   //   results: { <fileId>: {count, totalScanned, completed, name, error?} }
   vca:      { folderId:null, folderName:null, files:[], results:{}, skipped:false },
-  incoming: { folderId:null, folderName:null, files:[], results:{}, skipped:false },
-  outgoing: { folderId:null, folderName:null, files:[], results:{}, skipped:false },
+  incoming: { folderId:null, folderName:null, files:[], folderFiles:[], results:{}, skipped:false },
+  outgoing: { folderId:null, folderName:null, files:[], folderFiles:[], results:{}, skipped:false },
+  dirState: {},   // keyed by dir.id — { files:[], results:{}, skipped:false } per direction
   billedToFilledFor: null,   // partner id whose defaults are currently in the BILLED TO fields
   invoiceByDate: {},         // { <dateKey>: "<Prefix>-NNNN" } — one invoice number per selected date (single-date mode)
   consolidated: null,        // multi-date mode: { invoiceNumber, range:{year,startMonth,startDay,endMonth,endDay}, label }
@@ -692,7 +653,7 @@ const state = {
 
 // ---- Upload mode: local file accumulator (before API upload) ----
 // uploadFilesByDir[dir] = [ File, File, ... ] (browser File objects)
-const uploadFilesByDir = { incoming: [], outgoing: [], vca: [] };
+const uploadFilesByDir = { incoming: [], outgoing: [] };
 
 // ---- Source mode switching ----
 function switchSourceMode(mode) {
@@ -703,10 +664,12 @@ function switchSourceMode(mode) {
   $('#pageSubUpload').hidden = mode !== 'upload';
   // Reset state
   state.year = null; state.partner = null; state.month = null;
+  state.dirState = {};
   resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
-  uploadFilesByDir.incoming = []; uploadFilesByDir.outgoing = []; uploadFilesByDir.vca = [];
-  renderUploadFileList('incoming'); renderUploadFileList('outgoing'); renderUploadFileList('vca');
+  uploadFilesByDir.incoming = []; uploadFilesByDir.outgoing = [];
+  renderUploadFileList('incoming'); renderUploadFileList('outgoing');
   $('#uploadStatusBox').innerHTML = '';
+  $('#dir-blocks').innerHTML = '';
   // Hide all step sections
   ['#s-year','#s-partner','#s-month','#s-pick','#s-gen','#s-upload','#s-upload-month'].forEach(x=>{
     const el = $(x); if (el) el.hidden = true;
@@ -765,7 +728,6 @@ async function handleUploadContinue() {
   const allFiles = [
     ...uploadFilesByDir.incoming.map(f => ({f, dir:'incoming'})),
     ...uploadFilesByDir.outgoing.map(f => ({f, dir:'outgoing'})),
-    ...uploadFilesByDir.vca.map(f => ({f, dir:'vca'})),
   ];
   if (!allFiles.length) {
     box.innerHTML = '<div class="note err">Please add at least one file (Incoming or Outgoing) before continuing.</div>';
@@ -778,22 +740,23 @@ async function handleUploadContinue() {
     const fd = new FormData();
     uploadFilesByDir.incoming.forEach(f => fd.append('incoming_files', f, f.name));
     uploadFilesByDir.outgoing.forEach(f => fd.append('outgoing_files', f, f.name));
-    uploadFilesByDir.vca.forEach(f => fd.append('vca_files', f, f.name));
     const r = await fetch('/upload-source', { method: 'POST', body: fd });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       throw new Error(err.error || `Upload failed (HTTP ${r.status})`);
     }
     const result = await r.json();
-    // Populate state direction files from upload result
-    ['incoming','outgoing','vca'].forEach(dir => {
+    // Populate state direction pool files from upload result
+    ['incoming','outgoing'].forEach(dir => {
       const uploads = result[dir] || [];
       state[dir].files = uploads.map(u => ({ id: u.id, name: u.name }));
       state[dir].folderId = null;
       state[dir].folderName = uploads.length ? uploads[0].name : null;
       state[dir].results = {}; state[dir].skipped = false;
     });
-    const totalFiles = (result.incoming.length + result.outgoing.length + result.vca.length);
+    // Reset dirState — direction selection happens at Pick step
+    state.dirState = {};
+    const totalFiles = ((result.incoming||[]).length + (result.outgoing||[]).length);
     box.innerHTML = `<div class="note ok">${totalFiles} file(s) uploaded successfully. Select a partner to continue.</div>`;
     // Move to partner step
     renderSteps('partner');
@@ -817,6 +780,7 @@ async function handleUploadContinue() {
 function pickPartnerUpload(p) {
   state.partner = p;
   state.month = null;
+  state.dirState = {};
   // Do NOT resetDirState — uploaded file IDs must survive partner selection
   ['#s-pick','#s-gen','#s-upload-month'].forEach(x=>{ const el=$(x); if(el) el.hidden=true; });
   // Rebuild month grid for upload mode
@@ -851,6 +815,7 @@ function buildUploadMonthGrid() {
 function pickUploadMonth(mo) {
   state.year = mo.year;
   state.month = { name: mo.label, id: null }; // synthetic month object
+  state.dirState = {};
   ['#s-gen'].forEach(x=>{ const el=$(x); if(el) el.hidden=true; });
   // Reload uploaded files into pick UI
   renderSteps('pick');
@@ -862,42 +827,73 @@ function pickUploadMonth(mo) {
 // ---- Upload mode: populate Pick step from uploaded state ----
 // uploadedFileRegistry: stash the full list of available uploaded files per direction
 // (separate from state[d].files which is the user's SELECTION)
-const uploadedFileRegistry = { vca: [], incoming: [], outgoing: [] };
+const uploadedFileRegistry = { incoming: [], outgoing: [] };
+
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Render dynamic direction blocks from partner.directions into #dir-blocks
+function renderDirBlocks() {
+  const dirs = (state.partner && state.partner.directions) || [];
+  const container = $('#dir-blocks');
+  if (!dirs.length) {
+    container.innerHTML = '<span class="muted">No directions configured for this partner. Configure directions in Partner Admin first.</span>';
+    return;
+  }
+  // Initialize dirState for each direction
+  dirs.forEach(dir => {
+    if (!state.dirState[dir.id]) state.dirState[dir.id] = { files:[], results:{}, skipped:false };
+  });
+  container.innerHTML = dirs.map(dir => {
+    const modeColor = dir.mode === 'outgoing' ? '#c0392b' : '#1a6b3c';
+    const modeBg = dir.mode === 'outgoing' ? '#fde8e8' : '#e8f5ee';
+    return `
+      <div class="dir-block" id="dir-block-${dir.id}" style="margin-top:8px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+          <label class="fld" style="margin:0">${escHtml(dir.name)}</label>
+          <span style="font-size:.75rem;font-weight:600;color:${modeColor};background:${modeBg};padding:2px 8px;border-radius:10px">${dir.mode.toUpperCase()}</span>
+          <button class="ghost" style="font-size:.75rem;padding:2px 10px;margin-left:auto" onclick="skipDirById('${dir.id}')">Skip</button>
+        </div>
+        <div id="dir-folder-${dir.id}" class="note" style="margin:4px 0 10px"></div>
+        <div id="dir-date-block-${dir.id}" hidden>
+          <div class="grid" id="dir-dates-${dir.id}"></div>
+        </div>
+        <div id="dir-count-${dir.id}" style="margin-top:8px"></div>
+      </div>`;
+  }).join('');
+}
 
 function loadDirFilesFromUpload() {
-  const partnerHasVca = !!(state.partner && state.partner.hasVca);
-  $('#vcaDirBlock').hidden = !partnerHasVca;
-  $('#btnSkipVca').hidden = !partnerHasVca;
   $('#btnGenMonth').hidden = true; // not applicable for upload mode
-
-  ['vca','incoming','outgoing'].forEach(d => {
-    // Save available files, then clear selection (user must click to select)
+  // Stash uploaded pool files into registry (incoming/outgoing)
+  ['incoming','outgoing'].forEach(d => {
     uploadedFileRegistry[d] = [...state[d].files];
     state[d].files = [];
-    state[d].results = {};
-    state[d].skipped = false;
-
-    $(`#${d}CountBox`).innerHTML = '';
-    $(`#${d}Dates`).innerHTML = '';
-    const available = uploadedFileRegistry[d];
-    const folderBox = $(`#${d}Folder`);
-    const dateBlock = $(`#${d}DateBlock`);
-    if (!available.length) {
-      folderBox.innerHTML = `<span class="muted">No ${cap(d)} files uploaded — you can skip this direction.</span>`;
+  });
+  renderDirBlocks();
+  const dirs = (state.partner && state.partner.directions) || [];
+  dirs.forEach(dir => {
+    const pool = dir.mode === 'outgoing' ? uploadedFileRegistry.outgoing : uploadedFileRegistry.incoming;
+    // Reset this direction's selection
+    state.dirState[dir.id] = { files:[], results:{}, skipped:false };
+    const folderBox = $(`#dir-folder-${dir.id}`);
+    const dateBlock = $(`#dir-date-block-${dir.id}`);
+    const datesGrid = $(`#dir-dates-${dir.id}`);
+    if (!pool.length) {
+      folderBox.innerHTML = `<span class="muted">No ${dir.mode} files uploaded — skip this direction.</span>`;
       dateBlock.hidden = true;
       return;
     }
-    folderBox.innerHTML = `Uploaded: <b>${available.length} file${available.length>1?'s':''}</b> — click to select`;
+    folderBox.innerHTML = `Uploaded: <b>${pool.length} ${dir.mode} file${pool.length>1?'s':''}</b> — click to select`;
     dateBlock.hidden = false;
-    const grid = $(`#${d}Dates`);
-    available.forEach(f => {
+    datesGrid.innerHTML = '';
+    pool.forEach(f => {
       const b = document.createElement('button');
       b.className = 'opt';
-      b.innerHTML = f.name;
-      b.onclick = () => toggleDate(d, f, b);
-      grid.appendChild(b);
+      b.innerHTML = escHtml(f.name);
+      b.onclick = () => toggleDate(dir.id, f, b);
+      datesGrid.appendChild(b);
     });
-    renderDirSelectionNote(d);
+    renderDirSelectionNote(dir.id);
   });
   $('#btnRunCounts').disabled = true;
   updateRunCountsButton();
@@ -936,15 +932,29 @@ function fileDateLabel(f){ const d = parseFileDate(f.name); return d ? d.label :
 // All selected files (all directions) that passed the count check with count > 0.
 function selectedDatedFiles(){
   const out = [];
-  ['vca','incoming','outgoing'].forEach(d => {
-    if(state[d].skipped) return;
-    state[d].files.forEach(f => {
-      const res = (state[d].results||{})[f.id];
-      if(res && res.completed && res.count > 0){
-        out.push({ d, file:f, dateKey:fileDateKey(f), label:fileDateLabel(f), count:res.count });
-      }
+  const useDirState = Object.keys(state.dirState).length > 0;
+  if (useDirState) {
+    (state.partner && state.partner.directions || []).forEach(dir => {
+      const ds = state.dirState[dir.id];
+      if (!ds || ds.skipped) return;
+      ds.files.forEach(f => {
+        const res = (ds.results||{})[f.id];
+        if(res && res.completed && res.count > 0){
+          out.push({ dirId:dir.id, dirName:dir.name, dirMode:dir.mode, d:dir.id, file:f, dateKey:fileDateKey(f), label:fileDateLabel(f), count:res.count });
+        }
+      });
     });
-  });
+  } else {
+    ['vca','incoming','outgoing'].forEach(d => {
+      if(state[d].skipped) return;
+      state[d].files.forEach(f => {
+        const res = (state[d].results||{})[f.id];
+        if(res && res.completed && res.count > 0){
+          out.push({ d, file:f, dateKey:fileDateKey(f), label:fileDateLabel(f), count:res.count });
+        }
+      });
+    });
+  }
   return out;
 }
 // Distinct dates among the count-checked selection, sorted ascending by key.
@@ -1174,6 +1184,7 @@ async function pickYear(y){
   state.year = y;
   state.monthFolders = [];
   state.partner = null; state.month = null;
+  state.dirState = {};
   resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
   ['#s-partner','#s-month','#s-pick','#s-gen'].forEach(x=>$(x).hidden=true);
   renderSteps('year');
@@ -1198,6 +1209,7 @@ async function pickYear(y){
 function pickPartner(p){
   state.partner = p;
   state.month = null;
+  state.dirState = {};
   resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
   ['#s-pick','#s-gen'].forEach(x=>$(x).hidden=true);
   renderSteps('month'); show('#s-month');
@@ -1215,11 +1227,12 @@ function pickPartner(p){
 }
 
 function resetDirState(d){
-  state[d] = { folderId:null, folderName:null, files:[], results:{}, skipped:false };
+  state[d] = { folderId:null, folderName:null, files:[], folderFiles:[], results:{}, skipped:false };
 }
 
 async function pickMonth(m){
   state.month = m;
+  state.dirState = {};
   resetDirState('vca');
   resetDirState('incoming');
   resetDirState('outgoing');
@@ -1228,18 +1241,10 @@ async function pickMonth(m){
   show('#s-pick');
   smoothScrollTo('#s-pick');
 
-  // Show/hide VCA block based on whether current partner has VCA billing.
-  const partnerHasVca = !!(state.partner && state.partner.hasVca);
-  $('#vcaDirBlock').hidden = !partnerHasVca;
-  $('#btnSkipVca').hidden = !partnerHasVca;
-
-  // Reset all dir UI blocks
-  ['vca','incoming','outgoing'].forEach(d => {
-    $(`#${d}Folder`).innerHTML = '<span class="muted"><span class="spin"></span>Loading folder…</span>';
-    $(`#${d}DateBlock`).hidden = true;
-    $(`#${d}CountBox`).innerHTML = '';
-  });
+  // Show loading placeholder
+  $('#dir-blocks').innerHTML = '<span class="muted"><span class="spin"></span>Loading directions…</span>';
   $('#btnRunCounts').disabled = true;
+  $('#btnGenMonth').hidden = true;
 
   try{
     const { items } = await api('/list-files', { folderId: m.id });
@@ -1251,18 +1256,67 @@ async function pickMonth(m){
     };
     const inc = pickFolder(/incoming/i);
     const out = pickFolder(/outgoing/i);
-    // VCA: look for dedicated "VCA" folder; if none, fall back to the Incoming folder.
-    // Per spec, VCA records live in the same Incoming Consolidated CBS (same file, different transfer_mode filter).
-    const vcaDedicated = partnerHasVca ? pickFolder(/^vca$/i) : null;
-    const vca = partnerHasVca ? (vcaDedicated || inc) : null;
-    if(vca){ state.vca.folderId = vca.id; state.vca.folderName = vcaDedicated ? vca.name : `${vca.name} (VCA via Incoming)`; }
     if(inc){ state.incoming.folderId = inc.id; state.incoming.folderName = inc.name; }
     if(out){ state.outgoing.folderId = out.id; state.outgoing.folderName = out.name; }
-    const loaders = [ loadDirFiles('incoming'), loadDirFiles('outgoing') ];
-    if(partnerHasVca) loaders.unshift(loadDirFiles('vca'));
+    await loadDirBlocksFromDrive();
+  }catch(e){ $('#dir-blocks').innerHTML = `<div class="note err">${String(e.message||e)}</div>`; }
+}
+
+async function loadDirBlocksFromDrive() {
+  renderDirBlocks();
+  const dirs = (state.partner && state.partner.directions) || [];
+  // Show loading for all direction folder boxes
+  dirs.forEach(dir => {
+    const box = $(`#dir-folder-${dir.id}`);
+    if (box) box.innerHTML = '<span class="muted"><span class="spin"></span>Loading…</span>';
+  });
+
+  // Load incoming and outgoing pools in parallel
+  let incomingFiles = [], outgoingFiles = [];
+  try {
+    const loaders = [];
+    if (state.incoming.folderId) loaders.push(
+      api('/list-files', { folderId: state.incoming.folderId }).then(({ items }) => {
+        incomingFiles = items.filter(i => !i.isFolder).sort((a,b) => a.name.localeCompare(b.name,undefined,{numeric:true}));
+        state.incoming.folderFiles = incomingFiles;
+      })
+    );
+    if (state.outgoing.folderId) loaders.push(
+      api('/list-files', { folderId: state.outgoing.folderId }).then(({ items }) => {
+        outgoingFiles = items.filter(i => !i.isFolder).sort((a,b) => a.name.localeCompare(b.name,undefined,{numeric:true}));
+        state.outgoing.folderFiles = outgoingFiles;
+      })
+    );
     await Promise.all(loaders);
-    $('#btnGenMonth').hidden = false;
-  }catch(e){ errNote($('#incomingFolder'), e); }
+  } catch(e) { console.error('Pool load error:', e); }
+
+  dirs.forEach(dir => {
+    const pool = dir.mode === 'outgoing' ? outgoingFiles : incomingFiles;
+    const folderName = dir.mode === 'outgoing' ? state.outgoing.folderName : state.incoming.folderName;
+    const folderBox = $(`#dir-folder-${dir.id}`);
+    const dateBlock = $(`#dir-date-block-${dir.id}`);
+    const datesGrid = $(`#dir-dates-${dir.id}`);
+    if (!folderBox) return;
+    if (!pool.length) {
+      folderBox.innerHTML = `<span class="muted">No ${dir.mode} files found in this month — skip this direction.</span>`;
+      if (dateBlock) dateBlock.hidden = true;
+      return;
+    }
+    folderBox.innerHTML = `Folder: <b>${escHtml(folderName || dir.mode)}</b>`;
+    if (dateBlock) dateBlock.hidden = false;
+    datesGrid.innerHTML = '';
+    pool.forEach(f => {
+      const b = document.createElement('button');
+      b.className = 'opt';
+      b.innerHTML = escHtml(f.name);
+      const ds = state.dirState[dir.id] || { files:[] };
+      if (ds.files.some(x => x.id === f.id)) b.classList.add('sel');
+      b.onclick = () => toggleDate(dir.id, f, b);
+      datesGrid.appendChild(b);
+    });
+    renderDirSelectionNote(dir.id);
+  });
+  $('#btnGenMonth').hidden = false;
 }
 
 async function loadDirFiles(d){
@@ -1297,12 +1351,15 @@ async function loadDirFiles(d){
 }
 
 // Toggle a date file in/out of the direction's selection (multi-select).
+// d can be a dir.id (new dynamic system) or a legacy key ('vca','incoming','outgoing').
 function toggleDate(d, f, btn){
-  const arr = state[d].files;
+  const ds = state.dirState[d] || state[d];
+  if (!ds) return;
+  const arr = ds.files;
   const idx = arr.findIndex(x => x.id === f.id);
-  if(idx >= 0){ arr.splice(idx, 1); btn.classList.remove('sel'); delete state[d].results[f.id]; }
+  if(idx >= 0){ arr.splice(idx, 1); btn.classList.remove('sel'); delete ds.results[f.id]; }
   else { arr.push(f); btn.classList.add('sel'); }
-  state[d].skipped = false;
+  ds.skipped = false;
   renderDirSelectionNote(d);
   // Changing the selection invalidates any prior count/generate step — force a re-check.
   $('#s-gen').hidden = true;
@@ -1311,41 +1368,61 @@ function toggleDate(d, f, btn){
 }
 
 // Pre-count note: how many files are selected for this direction.
+// d can be a dir.id (new) or a legacy key ('vca','incoming','outgoing').
 function renderDirSelectionNote(d){
-  const box = $(`#${d}CountBox`);
+  // Try dynamic dir-count-<dirId> box first, then legacy <d>CountBox
+  const box = $(`#dir-count-${d}`) || $(`#${d}CountBox`);
   if(!box) return;
-  const arr = state[d].files;
-  if(state[d].skipped){ box.innerHTML = '<div class="note">Skipped — not included in the run.</div>'; return; }
+  const ds = state.dirState[d] || state[d];
+  if (!ds) return;
+  const arr = ds.files;
+  if(ds.skipped){ box.innerHTML = '<div class="note">Skipped — not included in the run.</div>'; return; }
   if(!arr.length){ box.innerHTML = ''; return; }
-  const names = arr.map(f => `<b>${f.name}</b>`).join(', ');
+  const names = arr.map(f => `<b>${escHtml(f.name)}</b>`).join(', ');
   box.innerHTML = `<div class="note">${arr.length} file${arr.length>1?'s':''} selected: ${names}</div>`;
 }
 
+function skipDirById(dirId){
+  const ds = state.dirState[dirId];
+  if (!ds) return;
+  ds.skipped = true; ds.files = []; ds.results = {};
+  const countBox = $(`#dir-count-${dirId}`);
+  if (countBox) countBox.innerHTML = '<div class="note">Skipped — not included in this run.</div>';
+  const datesGrid = $(`#dir-dates-${dirId}`);
+  if (datesGrid) [...datesGrid.children].forEach(b => b.classList && b.classList.remove('sel'));
+  $('#s-gen').hidden = true;
+  renderSteps('pick');
+  updateRunCountsButton();
+}
+
 function skipDirection(d){
-  state[d].skipped = true;
-  state[d].files = []; state[d].results = {};
-  $(`#${d}CountBox`).innerHTML = '<div class="note">Skipped — this direction will not be included in the run.</div>';
-  // Deselect any selected pill in the date grid
-  [...$(`#${d}Dates`).children].forEach(c => c.classList && c.classList.remove('sel'));
+  const ds = state.dirState[d] || state[d];
+  if (!ds) return;
+  ds.skipped = true; ds.files = []; ds.results = {};
+  // Try new dynamic box, fall back to legacy
+  const countBox = $(`#dir-count-${d}`) || $(`#${d}CountBox`);
+  if (countBox) countBox.innerHTML = '<div class="note">Skipped — this direction will not be included in the run.</div>';
+  const datesGrid = $(`#dir-dates-${d}`) || $(`#${d}Dates`);
+  if (datesGrid) [...datesGrid.children].forEach(c => c.classList && c.classList.remove('sel'));
   $('#s-gen').hidden = true;
   renderSteps('pick');
   updateRunCountsButton();
 }
 
 function updateRunCountsButton(){
-  // Enable Run-counts if at least one direction has ≥1 file selected AND not skipped.
-  const ok = ['vca','incoming','outgoing'].some(d => state[d].files.length && !state[d].skipped);
+  const useDirState = Object.keys(state.dirState).length > 0;
+  const ok = useDirState
+    ? Object.values(state.dirState).some(d => d.files.length && !d.skipped)
+    : ['vca','incoming','outgoing'].some(d => state[d].files.length && !state[d].skipped);
   $('#btnRunCounts').disabled = !ok;
 }
 
 async function runBothCounts(){
-  // Run /filter (count-only) for EVERY selected file across all directions, in parallel.
-  const dirs = ['vca','incoming','outgoing'].filter(d => state[d].files.length && !state[d].skipped);
-  if(!dirs.length) return;
   const btn = $('#btnRunCounts');
   const productCodes = state.partner && state.partner.productCodes;
   if(!productCodes || !productCodes.length){
-    errNote($('#incomingCountBox'), new Error('Selected partner is missing a CBS Product ID code. Refresh the page and try again.'));
+    const firstCountBox = document.querySelector('[id^="dir-count-"]') || $('#incomingCountBox');
+    if(firstCountBox) errNote(firstCountBox, new Error('Selected partner is missing a CBS Product ID code. Refresh the page and try again.'));
     return;
   }
   // Build column-A filter: single-ID partners use equals, multi-ID partners use includeValues.
@@ -1353,11 +1430,25 @@ async function runBothCounts(){
     ? { column:'A', equals: productCodes[0] }
     : { column:'A', includeValues: productCodes };
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Checking selected files…';
-  // Flatten to a list of {d, file} jobs, reset results.
+
+  const useDirState = Object.keys(state.dirState).length > 0;
   const jobs = [];
-  dirs.forEach(d => { state[d].results = {}; state[d].files.forEach(f => jobs.push({ d, f })); });
-  // Throttle to 3 concurrent count-checks: each reads a whole source sheet (many API
-  // calls), so firing all dates at once blew past Google's per-minute read quota.
+  if (useDirState) {
+    (state.partner.directions || []).forEach(dir => {
+      const ds = state.dirState[dir.id];
+      if (!ds || !ds.files.length || ds.skipped) return;
+      ds.results = {};
+      ds.files.forEach(f => jobs.push({ dirId: dir.id, f }));
+    });
+  } else {
+    ['vca','incoming','outgoing'].filter(d => state[d].files.length && !state[d].skipped).forEach(d => {
+      state[d].results = {};
+      state[d].files.forEach(f => jobs.push({ d, f }));
+    });
+  }
+  if(!jobs.length){ btn.disabled=false; btn.textContent='Run count check'; return; }
+
+  // Throttle to 3 concurrent count-checks to avoid Google quota limits.
   const settled = await runPooled(jobs, 3, (j) =>
     api('/filter', {
       sourceFileId: j.f.id, headerRow: HEADER_ROW,
@@ -1367,17 +1458,22 @@ async function runBothCounts(){
   );
   settled.forEach((res, i) => {
     const j = jobs[i];
-    if(res.status === 'fulfilled'){
-      const r = res.value.r;
-      state[j.d].results[j.f.id] = { count:r.count, totalScanned:r.totalScanned||0, completed:true, name:j.f.name };
-    } else {
-      state[j.d].results[j.f.id] = { count:0, completed:false, name:j.f.name, error:String((res.reason && res.reason.message) || res.reason) };
-    }
+    const result = res.status === 'fulfilled'
+      ? { count:res.value.r.count, totalScanned:res.value.r.totalScanned||0, completed:true, name:j.f.name }
+      : { count:0, completed:false, name:j.f.name, error:String((res.reason && res.reason.message) || res.reason) };
+    if (j.dirId) { state.dirState[j.dirId].results[j.f.id] = result; }
+    else { state[j.d].results[j.f.id] = result; }
   });
-  dirs.forEach(d => renderDirCounts(d));
+
+  if (useDirState) {
+    (state.partner.directions||[]).forEach(dir => renderDirCounts(dir.id));
+  } else {
+    ['vca','incoming','outgoing'].forEach(d => renderDirCounts(d));
+  }
   btn.disabled = false; btn.textContent = 'Run count check';
-  // Reveal Generate step if any selected file has count > 0.
-  const anyOk = ['vca','incoming','outgoing'].some(d => Object.values(state[d].results||{}).some(x => x.completed && x.count > 0));
+  const anyOk = useDirState
+    ? Object.values(state.dirState).some(ds => Object.values(ds.results||{}).some(x => x.completed && x.count > 0))
+    : ['vca','incoming','outgoing'].some(d => Object.values(state[d].results||{}).some(x => x.completed && x.count > 0));
   if(anyOk){
     renderSteps('gen'); show('#s-gen');
     smoothScrollTo('#s-gen');
@@ -1389,17 +1485,20 @@ async function runBothCounts(){
 }
 
 // Render per-file count results for a direction.
+// d can be a dir.id (new) or a legacy key ('vca','incoming','outgoing').
 function renderDirCounts(d){
-  const box = $(`#${d}CountBox`);
+  const box = $(`#dir-count-${d}`) || $(`#${d}CountBox`);
   if(!box) return;
-  const files = state[d].files;
+  const ds = state.dirState[d] || state[d];
+  if(!ds) return;
+  const files = ds.files;
   if(!files.length){ box.innerHTML = ''; return; }
   const rows = files.map(f => {
-    const res = (state[d].results||{})[f.id] || {};
-    if(res.error) return `<div class="note err">${f.name}: ${res.error}</div>`;
+    const res = (ds.results||{})[f.id] || {};
+    if(res.error) return `<div class="note err">${escHtml(f.name)}: ${escHtml(res.error)}</div>`;
     const ok = res.count > 0;
     return `<div class="note ${ok?'ok':'err'}" style="display:flex;justify-content:space-between;gap:12px">
-        <span>${f.name}</span>
+        <span>${escHtml(f.name)}</span>
         <span><b>${res.count||0}</b> settled · <span class="muted">${(res.totalScanned||0).toLocaleString()} scanned</span></span>
       </div>`;
   }).join('');
@@ -1420,15 +1519,29 @@ async function runMonthlyBilling(){
   box.innerHTML = '';
 
   // Auto-select all folder files for each active direction.
-  ['vca','incoming','outgoing'].forEach(d => {
-    if(state[d].skipped) return;
-    const files = state[d].folderFiles || [];
-    if(!files.length) return;
-    state[d].files = [...files];
-    state[d].results = {};
-    [...($(`#${d}Dates`).children || [])].forEach(b => b.classList && b.classList.add('sel'));
-    renderDirSelectionNote(d);
-  });
+  const useDirState = Object.keys(state.dirState).length > 0;
+  if (useDirState) {
+    (state.partner && state.partner.directions || []).forEach(dir => {
+      const ds = state.dirState[dir.id];
+      if (!ds || ds.skipped) return;
+      const pool = dir.mode === 'outgoing' ? state.outgoing.folderFiles : state.incoming.folderFiles;
+      if (!pool || !pool.length) return;
+      ds.files = [...pool]; ds.results = {};
+      const datesGrid = $(`#dir-dates-${dir.id}`);
+      if (datesGrid) [...datesGrid.children].forEach(b => b.classList && b.classList.add('sel'));
+      renderDirSelectionNote(dir.id);
+    });
+  } else {
+    ['vca','incoming','outgoing'].forEach(d => {
+      if(state[d].skipped) return;
+      const files = state[d].folderFiles || [];
+      if(!files.length) return;
+      state[d].files = [...files];
+      state[d].results = {};
+      [...($(`#${d}Dates`).children || [])].forEach(b => b.classList && b.classList.add('sel'));
+      renderDirSelectionNote(d);
+    });
+  }
   updateRunCountsButton();
   $('#s-gen').hidden = true;
   renderSteps('pick');
@@ -1442,12 +1555,9 @@ async function runMonthlyBilling(){
   btn.textContent = '⚡ Generate Entire Month';
 }
 
-// Wire up the directional buttons
-$('#btnRunCounts').onclick    = () => runBothCounts();
-$('#btnSkipVca').onclick      = () => skipDirection('vca');
-$('#btnSkipIncoming').onclick = () => skipDirection('incoming');
-$('#btnSkipOutgoing').onclick = () => skipDirection('outgoing');
-$('#btnGenMonth').onclick     = () => runMonthlyBilling();
+// Wire up the Pick step buttons
+$('#btnRunCounts').onclick = () => runBothCounts();
+$('#btnGenMonth').onclick  = () => runMonthlyBilling();
 
 // Build the invoice-number inputs. Single date → one input. Multiple dates →
 // consolidation mode: ONE invoice number for the whole range + an editable,
@@ -1597,19 +1707,14 @@ $('#btnGen').onclick = async ()=>{
       return { label:a.value.trim().slice(0,80), amount:Math.max(0, parseFloat(b.value||'0')||0) };
     }).filter(x=>x.label || x.amount > 0);
   }
-  // For V5 Philippines and Topjuantech: auto-add VCA runs using Incoming files when no VCA
-  // files were explicitly selected. Per spec, VCA records live in the same Incoming CBS;
-  // the server filters by transfer_mode (P2P/QR_P2P) to split VCA from QRPH rows.
-  if (!!(state.partner?.hasVca) &&
-      !state.vca.skipped &&
-      !dated.some(x => x.d === 'vca') &&
-      dated.some(x => x.d === 'incoming')) {
-    dated.filter(x => x.d === 'incoming').forEach(x => dated.push({ ...x, d: 'vca' }));
-  }
-  // Order: by date ascending; within each date: incoming first, then vca, then outgoing.
-  // Incoming must run before VCA because the server's initBlankSummary fires on 'incoming'
-  // and would wipe VCA data if VCA ran first and created the report.
-  const _dirRank = d => d === 'incoming' ? 0 : d === 'vca' ? 1 : 2;
+  // Order: by date ascending; within each date: by direction order from partner.directions
+  // (or legacy rank for old VCA-style partners).
+  const _dirOrder = (state.partner && state.partner.directions || []).map(d => d.id);
+  const _dirRank = d => {
+    const idx = _dirOrder.indexOf(d);
+    if (idx >= 0) return idx;
+    return d === 'incoming' ? 0 : d === 'vca' ? 1 : 2; // legacy fallback
+  };
   dated.sort((a,b) => String(a.dateKey).localeCompare(String(b.dateKey)) || _dirRank(a.d) - _dirRank(b.d));
 
   btn.disabled = true;
@@ -1623,13 +1728,15 @@ $('#btnGen').onclick = async ()=>{
   for (let i = 0; i < dated.length; i++) {
     const run = dated[i];
     const invoiceNumber = state.invoiceByDate[run.dateKey];
-    btn.innerHTML = `<span class="spin"></span>Building ${run.label} · ${run.d} (${i+1}/${dated.length})…`;
+    btn.innerHTML = `<span class="spin"></span>Building ${run.label} · ${run.dirName||run.d} (${i+1}/${dated.length})…`;
     try {
       const r = await api('/build-billing', {
         sourceFileId: run.file.id, headerRow: HEADER_ROW,
         partnerId: state.partner.id,
         year: state.year,
-        direction: run.d, period: run.file.name,
+        directionId: run.dirId,      // dynamic system: server resolves from partner.directions
+        direction: run.d,             // legacy fallback (also used by server as secondary lookup)
+        period: run.file.name,
         invoiceNumber,
         previouslyCharged: dates.length === 1 ? previouslyCharged : [],
         previousPdfFileIds: prevPdfByDate[run.dateKey] || [],
