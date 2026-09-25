@@ -1175,10 +1175,9 @@ function renderDirectionList() {
           ${renderDirFeeFields(idx, d)}
         </div>
       </div>
-      <div>
-        <span style="font-size:.78rem;font-weight:600;">Rules (${(d.rules||[]).length}):</span>
-        <button class="btn btn-secondary btn-sm" onclick="toggleDirRules(${idx})" style="margin-left:6px;font-size:.75rem;padding:3px 10px;" id="dir-${idx}-rules-btn">Show</button>
-        <div id="dir-${idx}-rules" style="display:none; margin-top:6px;">
+      <div style="margin-top:10px;">
+        <div style="font-size:.8rem;font-weight:600;margin-bottom:6px;border-top:1px solid #eee;padding-top:8px;">Filter Rules</div>
+        <div id="dir-${idx}-rules">
           ${renderDirRules(idx, d)}
         </div>
       </div>
@@ -1227,21 +1226,122 @@ function renderDirFeeFields(idx, d) {
 
 function renderDirRules(idx, d) {
   const rules = d.rules || [];
-  if (rules.length === 0) return '<p style="color:#aaa;font-size:.78rem;font-style:italic;">No rules embedded in this direction.</p>';
-  return rules.map((r, ri) => `
-    <div style="border:1px solid #eee; padding:6px; margin-bottom:4px; border-radius:4px; display:flex; justify-content:space-between; align-items:center; font-size:.78rem;">
-      <span>${escHtml(r.type)}${r.enabled===false?' <em>(disabled)</em>':''}: ${escHtml(JSON.stringify(r.params||{}))}</span>
-      <button class="btn btn-danger btn-sm" onclick="removeDirRule(${idx},${ri})" style="padding:2px 8px;">&#x2715;</button>
+  const mode = d.mode || 'incoming';
+
+  const rulesHtml = rules.length === 0
+    ? '<p style="color:#aaa;font-size:.78rem;font-style:italic;margin-bottom:6px;">No filter rules — all rows in the direction\'s CBS file will be processed.</p>'
+    : rules.map((r, ri) => {
+        const def = RULE_REGISTRY[r.type] || { label: r.type, params: [] };
+        const disabled = r.enabled === false;
+        return `
+          <div style="border:1px solid ${disabled?'#ddd':'#c8e6d8'};border-radius:6px;padding:8px 10px;margin-bottom:6px;background:${disabled?'#f8f8f8':'#f5faf7'};opacity:${disabled?.7:1};">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                <input type="checkbox" ${!disabled?'checked':''} onchange="toggleDirRule(${idx},${ri})"/>
+                <strong style="font-size:.8rem;">${escHtml(def.label||r.type)}</strong>
+              </label>
+              <div style="flex:1;min-width:0;">${renderRuleParamsSummary(r)}</div>
+              <button class="btn btn-secondary btn-sm" onclick="expandDirRuleEdit(${idx},${ri})" style="font-size:.72rem;padding:2px 8px;">Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="removeDirRule(${idx},${ri})" style="font-size:.72rem;padding:2px 8px;">✕</button>
+            </div>
+            <div id="dir-rule-edit-${idx}-${ri}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">
+              ${renderParamEditFields(r, `${idx}_${ri}`)}
+              <div style="display:flex;gap:6px;margin-top:8px;">
+                <button class="btn btn-primary btn-sm" onclick="saveDirRuleParams(${idx},${ri})">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="collapseDirRuleEdit(${idx},${ri})">Cancel</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+  // Build rule type dropdown filtered to this direction's mode
+  const availOpts = Object.entries(RULE_REGISTRY)
+    .filter(([,def]) => !def.directions || def.directions.includes(mode))
+    .map(([k,def]) => `<option value="${escHtml(k)}">${escHtml(def.label)}</option>`)
+    .join('');
+
+  return rulesHtml + `
+    <div id="dir-${idx}-add-panel" style="display:none;border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:4px;background:#fafafa;">
+      <div style="margin-bottom:6px;">
+        <label style="font-size:.8rem;font-weight:600;">Rule type:</label>
+        <select id="dir-${idx}-add-type" onchange="onAddDirRuleTypeChange(${idx})" style="margin-left:6px;font-size:.8rem;">
+          <option value="">— select —</option>${availOpts}
+        </select>
+      </div>
+      <div id="dir-${idx}-add-desc" style="font-size:.77rem;color:#666;margin-bottom:6px;font-style:italic;"></div>
+      <div id="dir-${idx}-add-params"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn btn-primary btn-sm" onclick="confirmAddDirRule(${idx})">+ Add</button>
+        <button class="btn btn-secondary btn-sm" onclick="cancelAddDirRule(${idx})">Cancel</button>
+      </div>
     </div>
-  `).join('');
+    <button class="btn btn-secondary btn-sm" id="dir-${idx}-add-btn" onclick="openAddDirRule(${idx})" style="font-size:.75rem;margin-top:4px;">+ Add Rule</button>`;
 }
 
-function toggleDirRules(idx) {
+function toggleDirRule(idx, ri) {
+  const rules = currentDirections[idx].rules;
+  if (!rules) return;
+  rules[ri].enabled = rules[ri].enabled === false;
+  const card = document.getElementById(`dir-rule-edit-${idx}-${ri}`);
+  // Re-render just this direction's rules section in-place
   const el = document.getElementById(`dir-${idx}-rules`);
-  const btn = document.getElementById(`dir-${idx}-rules-btn`);
-  if (!el) return;
-  if (el.style.display === 'none') { el.style.display = ''; btn.textContent = 'Hide'; }
-  else { el.style.display = 'none'; btn.textContent = 'Show'; }
+  if (el) el.innerHTML = renderDirRules(idx, currentDirections[idx]);
+}
+
+function expandDirRuleEdit(idx, ri) {
+  const el = document.getElementById(`dir-rule-edit-${idx}-${ri}`);
+  if (el) el.style.display = '';
+}
+
+function collapseDirRuleEdit(idx, ri) {
+  const el = document.getElementById(`dir-rule-edit-${idx}-${ri}`);
+  if (el) el.style.display = 'none';
+}
+
+function saveDirRuleParams(idx, ri) {
+  const rule = currentDirections[idx].rules[ri];
+  const def = RULE_REGISTRY[rule.type];
+  const editDiv = document.getElementById(`dir-rule-edit-${idx}-${ri}`);
+  if (!editDiv || !def) return;
+  currentDirections[idx].rules[ri] = { ...rule, params: collectParamValues(editDiv, def) };
+  const el = document.getElementById(`dir-${idx}-rules`);
+  if (el) el.innerHTML = renderDirRules(idx, currentDirections[idx]);
+}
+
+function openAddDirRule(idx) {
+  document.getElementById(`dir-${idx}-add-panel`).style.display = '';
+  document.getElementById(`dir-${idx}-add-btn`).style.display = 'none';
+  document.getElementById(`dir-${idx}-add-type`).value = '';
+  document.getElementById(`dir-${idx}-add-params`).innerHTML = '';
+  document.getElementById(`dir-${idx}-add-desc`).textContent = '';
+}
+
+function cancelAddDirRule(idx) {
+  document.getElementById(`dir-${idx}-add-panel`).style.display = 'none';
+  document.getElementById(`dir-${idx}-add-btn`).style.display = '';
+}
+
+function onAddDirRuleTypeChange(idx) {
+  const type = document.getElementById(`dir-${idx}-add-type`).value;
+  const desc = document.getElementById(`dir-${idx}-add-desc`);
+  const paramsWrap = document.getElementById(`dir-${idx}-add-params`);
+  if (!type || !RULE_REGISTRY[type]) { desc.textContent = ''; paramsWrap.innerHTML = ''; return; }
+  const def = RULE_REGISTRY[type];
+  desc.textContent = def.description || '';
+  paramsWrap.innerHTML = renderParamEditFields({ type, enabled: true, params: {} }, `${idx}_new`);
+}
+
+function confirmAddDirRule(idx) {
+  const type = document.getElementById(`dir-${idx}-add-type`).value;
+  if (!type) { toast('Select a rule type.', 'err'); return; }
+  const def = RULE_REGISTRY[type];
+  const paramsWrap = document.getElementById(`dir-${idx}-add-params`);
+  const params = collectParamValues(paramsWrap, def);
+  if (!currentDirections[idx].rules) currentDirections[idx].rules = [];
+  currentDirections[idx].rules.push({ id: `rule_${Date.now()}`, type, enabled: true, params });
+  const el = document.getElementById(`dir-${idx}-rules`);
+  if (el) el.innerHTML = renderDirRules(idx, currentDirections[idx]);
+  cancelAddDirRule(idx);
 }
 
 function updateDirField(idx, field, value) {
