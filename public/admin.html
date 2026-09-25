@@ -742,7 +742,7 @@ function renderRuleList() {
   const container = document.getElementById('rulesList');
   const noMsg = document.getElementById('noRulesMsg');
   if (!container) return;
-  noMsg.style.display = currentRules.length === 0 ? '' : 'none';
+  if (noMsg) noMsg.style.display = currentRules.length === 0 ? '' : 'none';
   container.innerHTML = currentRules.map((rule, idx) => {
     const def = RULE_REGISTRY[rule.type] || { label: rule.type };
     const disabled = rule.enabled === false;
