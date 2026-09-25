@@ -25,12 +25,35 @@ const path = require("path");
 const { Readable } = require("stream");
 const { Firestore } = require("@google-cloud/firestore");
 const crypto = require("crypto");
+const multer = require("multer");
 
 const NETBANK_LOGO_PATH = path.join(__dirname, "public", "brand", "favicon-192.png");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static("public"));
+
+// ---- Uploaded file store (in-memory, 2-hour TTL) ----
+// Keys are "upload:<uuid>". Each entry: { rows, sheetTitle, name, expires }
+const uploadStore = new Map();
+const UPLOAD_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+function uploadStoreSet(id, data) {
+  uploadStore.set(id, { ...data, expires: Date.now() + UPLOAD_TTL_MS });
+}
+function uploadStoreGet(id) {
+  const entry = uploadStore.get(id);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) { uploadStore.delete(id); return null; }
+  return entry;
+}
+setInterval(() => {
+  for (const [k, v] of uploadStore) { if (Date.now() > v.expires) uploadStore.delete(k); }
+}, 15 * 60 * 1000); // GC every 15 minutes
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 20 }, // 50 MB per file, max 20 files
+});
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "";
@@ -1075,6 +1098,12 @@ function resolveColumn(spec, headerRow) {
 // Read source rows (Google Sheet OR .xlsx in Drive)
 // ---------------------------------------------------------------------------
 async function readSourceRows(drive, sheets, fileId, sheetName) {
+  // Uploaded file path — bypass Drive entirely
+  if (String(fileId).startsWith("upload:")) {
+    const stored = uploadStoreGet(fileId);
+    if (!stored) throw new Error("Uploaded file has expired (2-hour limit). Please re-upload and try again.");
+    return { rows: stored.rows, sheetTitle: stored.sheetTitle, sourceName: stored.name };
+  }
   const meta = await drive.files.get({
     fileId,
     fields: "id,name,mimeType",
@@ -2417,6 +2446,46 @@ app.get("/admin/partners/:id/fees-debug", requireAdmin, async (req, res) => {
   }
 });
 
+// ---- Upload source files (bypass Drive) ----
+// Accepts multipart form with fields: incoming_files[], outgoing_files[], vca_files[]
+// Each file is parsed immediately and stored in uploadStore with a "upload:<uuid>" key.
+app.post("/upload-source", upload.fields([
+  { name: "incoming_files" },
+  { name: "outgoing_files" },
+  { name: "vca_files" },
+]), (req, res) => {
+  try {
+    const result = { incoming: [], outgoing: [], vca: [] };
+    const dirs = ["incoming", "outgoing", "vca"];
+    for (const dir of dirs) {
+      const files = (req.files && req.files[`${dir}_files`]) || [];
+      for (const f of files) {
+        let parsed;
+        try {
+          if (/\.csv$/i.test(f.originalname)) {
+            const text = f.buffer.toString("utf8");
+            const rows = text.split(/\r?\n/).map(line => line.split(","));
+            parsed = { rows, sheetTitle: "Sheet1" };
+          } else {
+            parsed = parseExcelBuffer(f.buffer, null);
+          }
+        } catch (parseErr) {
+          return res.status(400).json({ error: `Failed to parse ${f.originalname}: ${parseErr.message}` });
+        }
+        const id = `upload:${crypto.randomUUID()}`;
+        uploadStoreSet(id, { rows: parsed.rows, sheetTitle: parsed.sheetTitle, name: f.originalname });
+        const dataRows = parsed.rows.length > 1 ? parsed.rows.length - 1 : 0;
+        result[dir].push({ id, name: f.originalname, rowCount: dataRows, sheetTitle: parsed.sheetTitle });
+        console.log(`[upload-source] stored ${dir} file "${f.originalname}" → ${id} (${dataRows} data rows)`);
+      }
+    }
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[upload-source] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/list-files", async (req, res) => {
   try {
     const { folderId } = req.body || {};
@@ -2619,7 +2688,11 @@ app.post("/build-billing", async (req, res) => {
     const fileIds = (Array.isArray(sourceFileIds) && sourceFileIds.length > 0)
       ? sourceFileIds
       : (sourceFileId ? [sourceFileId] : []);
-    if (fileIds.length === 0 || !fileIds.every((id) => typeof id === "string" && /^[A-Za-z0-9_-]{20,}$/.test(id))) {
+    const isValidFileId = (id) => typeof id === "string" && (
+      /^upload:[0-9a-f-]{36}$/.test(id) ||   // uploaded file: "upload:<uuid>"
+      /^[A-Za-z0-9_-]{20,}$/.test(id)          // Drive file ID
+    );
+    if (fileIds.length === 0 || !fileIds.every(isValidFileId)) {
       return res.status(400).json({ error: "validation", message: "Invalid sourceFileId(s)" });
     }
     if (fileIds.length > 62) {

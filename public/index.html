@@ -339,6 +339,56 @@
   @media (max-width: 380px){
     .grid{grid-template-columns:1fr}
   }
+
+  /* ---- Source selector ---- */
+  .source-cards{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px}
+  @media(max-width:480px){.source-cards{grid-template-columns:1fr}}
+  .source-card{
+    border:2px solid var(--nb-border); border-radius:var(--nb-radius-lg);
+    padding:18px 20px; cursor:pointer; background:var(--nb-surface);
+    transition:border-color .18s, background .18s, box-shadow .18s;
+    text-align:left; appearance:none; font:inherit; color:var(--nb-ink);
+  }
+  .source-card:hover{border-color:var(--nb-blue); box-shadow:var(--nb-shadow-sm)}
+  .source-card.sel{border-color:var(--nb-blue); background:var(--nb-blue-soft)}
+  .source-card .sc-icon{font-size:24px; margin-bottom:8px}
+  .source-card .sc-title{font:var(--nb-weight-semibold) var(--nb-text-base)/1.2 var(--nb-font-display); color:var(--nb-blue-deep)}
+  .source-card .sc-desc{font:var(--nb-weight-regular) var(--nb-text-xs)/1.5 var(--nb-font-body); color:var(--nb-muted); margin-top:4px}
+
+  /* ---- Upload zones ---- */
+  .upload-dir{margin-bottom:16px}
+  .upload-dir:last-child{margin-bottom:0}
+  .upload-zone{
+    border:2px dashed var(--nb-border); border-radius:var(--nb-radius);
+    padding:18px 20px; background:var(--nb-surface);
+    transition:border-color .18s, background .18s;
+    position:relative; min-height:70px;
+  }
+  .upload-zone.drag-over{border-color:var(--nb-blue); background:var(--nb-blue-soft)}
+  .upload-zone input[type=file]{
+    position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:2;
+  }
+  .upload-zone .uz-label{
+    pointer-events:none; text-align:center;
+    color:var(--nb-muted); font-size:var(--nb-text-sm);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .upload-file-list{margin-top:8px; display:flex; flex-direction:column; gap:4px; position:relative; z-index:3}
+  .upload-file-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:7px 10px; border-radius:var(--nb-radius-sm);
+    background:var(--nb-blue-soft); color:var(--nb-blue-deep);
+    font:var(--nb-weight-medium) var(--nb-text-xs)/1.3 var(--nb-font-body);
+    border:1px solid var(--nb-border);
+  }
+  .upload-file-item .uf-name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .upload-file-item button{
+    appearance:none; cursor:pointer; background:none; border:none;
+    color:var(--nb-muted); padding:0 2px; font-size:14px; line-height:1;
+    flex-shrink:0;
+  }
+  .upload-file-item button:hover{color:var(--nb-danger)}
+  .upload-status-note{margin-top:12px; font-size:var(--nb-text-sm)}
 </style>
 </head>
 <body>
@@ -375,13 +425,90 @@
   <header class="brand">
     <h1>Generate a billing report</h1>
   </header>
-  <p class="sub">Year → Partner → Month → pick <b>one or more</b> Incoming and/or Outgoing date files
+  <p class="sub" id="pageSubDrive">Year → Partner → Month → pick <b>one or more</b> Incoming and/or Outgoing date files
     → run the count check → generate a billing report and invoice <b>per date</b> into the output folder.</p>
+  <p class="sub" id="pageSubUpload" hidden>Upload CBS file(s) → Partner → Month → pick date files
+    → run the count check → generate a billing report and invoice <b>per date</b> into the output folder.</p>
+
+  <!-- Source selector -->
+  <section class="card" id="s-source">
+    <h2>Select data source</h2>
+    <p class="hint">Choose where the CBS billing files come from.</p>
+    <div class="source-cards">
+      <button class="source-card sel" id="srcDriveCard" onclick="switchSourceMode('drive')">
+        <div class="sc-icon">☁️</div>
+        <div class="sc-title">Google Drive</div>
+        <div class="sc-desc">Files are fetched automatically from the CBS Reports folder in Drive.</div>
+      </button>
+      <button class="source-card" id="srcUploadCard" onclick="switchSourceMode('upload')">
+        <div class="sc-icon">📁</div>
+        <div class="sc-title">Upload Files</div>
+        <div class="sc-desc">Upload your own XLSX or CSV CBS files directly into the console.</div>
+      </button>
+    </div>
+  </section>
 
   <div class="steps" id="steps"></div>
 
+  <!-- [Upload mode] Step 1: Upload files -->
+  <section class="card" id="s-upload" hidden>
+    <h2>1 — Upload CBS files</h2>
+    <p class="hint">Upload one or more XLSX or CSV CBS files per direction. Multiple daily files are supported — all selected files will be processed together.</p>
+
+    <div class="upload-dir">
+      <label class="fld">Incoming Files <span style="font-weight:400;text-transform:none;letter-spacing:0">(QRPh / VCA)</span></label>
+      <div class="upload-zone" id="uz-incoming"
+           ondragover="uzDragOver(event,'incoming')"
+           ondrop="uzDrop(event,'incoming')"
+           ondragleave="uzDragLeave(event,'incoming')">
+        <input type="file" id="uf-incoming" multiple accept=".xlsx,.xls,.csv"
+               onchange="uzFilePick('incoming',this)">
+        <div class="uz-label">📂 Click to browse or drag files here</div>
+        <div id="ul-incoming" class="upload-file-list"></div>
+      </div>
+    </div>
+
+    <div class="upload-dir">
+      <label class="fld">Outgoing Files <span style="font-weight:400;text-transform:none;letter-spacing:0">(Disburse)</span></label>
+      <div class="upload-zone" id="uz-outgoing"
+           ondragover="uzDragOver(event,'outgoing')"
+           ondrop="uzDrop(event,'outgoing')"
+           ondragleave="uzDragLeave(event,'outgoing')">
+        <input type="file" id="uf-outgoing" multiple accept=".xlsx,.xls,.csv"
+               onchange="uzFilePick('outgoing',this)">
+        <div class="uz-label">📂 Click to browse or drag files here</div>
+        <div id="ul-outgoing" class="upload-file-list"></div>
+      </div>
+    </div>
+
+    <div class="upload-dir" id="uz-vca-block">
+      <label class="fld">VCA Files <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <div class="upload-zone" id="uz-vca"
+           ondragover="uzDragOver(event,'vca')"
+           ondrop="uzDrop(event,'vca')"
+           ondragleave="uzDragLeave(event,'vca')">
+        <input type="file" id="uf-vca" multiple accept=".xlsx,.xls,.csv"
+               onchange="uzFilePick('vca',this)">
+        <div class="uz-label">📂 Click to browse or drag files here</div>
+        <div id="ul-vca" class="upload-file-list"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="go" id="btnUploadContinue" onclick="handleUploadContinue()">Upload &amp; Continue →</button>
+    </div>
+    <div id="uploadStatusBox" class="upload-status-note"></div>
+  </section>
+
+  <!-- [Upload mode] Step 3: Month selection -->
+  <section class="card" id="s-upload-month" hidden>
+    <h2>3 — Select billing month</h2>
+    <p class="hint">Select the month and year that the uploaded files belong to.</p>
+    <div class="grid" id="uploadMonthGrid"></div>
+  </section>
+
   <!-- Step 1: Year -->
-  <section class="card" id="s-year">
+  <section class="card" id="s-year" hidden>
     <h2>1 — Select year</h2>
     <p class="hint">Years available in the CBS Reports directory.</p>
     <div class="grid" id="years"><span class="muted"><span class="spin"></span>Loading years…</span></div>
@@ -551,6 +678,7 @@ const state = {
   yearFolders: {},    // map of year (number) → Drive folder item {id, name}
   monthFolders: [],   // month folders for the selected year, fetched when year is picked
   month:null,
+  sourceMode: 'drive',       // 'drive' | 'upload'
   // Multi-date: each direction holds an ARRAY of selected files + a per-file results map.
   //   files:   [{id,name,...}, ...]
   //   results: { <fileId>: {count, totalScanned, completed, name, error?} }
@@ -561,6 +689,219 @@ const state = {
   invoiceByDate: {},         // { <dateKey>: "<Prefix>-NNNN" } — one invoice number per selected date (single-date mode)
   consolidated: null,        // multi-date mode: { invoiceNumber, range:{year,startMonth,startDay,endMonth,endDay}, label }
 };
+
+// ---- Upload mode: local file accumulator (before API upload) ----
+// uploadFilesByDir[dir] = [ File, File, ... ] (browser File objects)
+const uploadFilesByDir = { incoming: [], outgoing: [], vca: [] };
+
+// ---- Source mode switching ----
+function switchSourceMode(mode) {
+  state.sourceMode = mode;
+  $('#srcDriveCard').classList.toggle('sel', mode === 'drive');
+  $('#srcUploadCard').classList.toggle('sel', mode === 'upload');
+  $('#pageSubDrive').hidden = mode !== 'drive';
+  $('#pageSubUpload').hidden = mode !== 'upload';
+  // Reset state
+  state.year = null; state.partner = null; state.month = null;
+  resetDirState('vca'); resetDirState('incoming'); resetDirState('outgoing');
+  uploadFilesByDir.incoming = []; uploadFilesByDir.outgoing = []; uploadFilesByDir.vca = [];
+  renderUploadFileList('incoming'); renderUploadFileList('outgoing'); renderUploadFileList('vca');
+  $('#uploadStatusBox').innerHTML = '';
+  // Hide all step sections
+  ['#s-year','#s-partner','#s-month','#s-pick','#s-gen','#s-upload','#s-upload-month'].forEach(x=>{
+    const el = $(x); if (el) el.hidden = true;
+  });
+  if (mode === 'drive') {
+    showDriveYears();
+  } else {
+    renderSteps('upload');
+    show('#s-upload');
+    smoothScrollTo('#s-upload');
+  }
+}
+
+// ---- Upload zone interaction ----
+function uzDragOver(e, dir) {
+  e.preventDefault();
+  $(`#uz-${dir}`).classList.add('drag-over');
+}
+function uzDragLeave(e, dir) {
+  $(`#uz-${dir}`).classList.remove('drag-over');
+}
+function uzDrop(e, dir) {
+  e.preventDefault();
+  $(`#uz-${dir}`).classList.remove('drag-over');
+  const files = [...(e.dataTransfer.files || [])].filter(f => /\.(xlsx|xls|csv)$/i.test(f.name));
+  if (!files.length) return;
+  files.forEach(f => { if (!uploadFilesByDir[dir].some(x => x.name === f.name)) uploadFilesByDir[dir].push(f); });
+  renderUploadFileList(dir);
+}
+function uzFilePick(dir, input) {
+  const files = [...(input.files || [])].filter(f => /\.(xlsx|xls|csv)$/i.test(f.name));
+  files.forEach(f => { if (!uploadFilesByDir[dir].some(x => x.name === f.name)) uploadFilesByDir[dir].push(f); });
+  input.value = ''; // reset so same file can be picked again
+  renderUploadFileList(dir);
+}
+function uzRemoveFile(dir, name) {
+  uploadFilesByDir[dir] = uploadFilesByDir[dir].filter(f => f.name !== name);
+  renderUploadFileList(dir);
+}
+function renderUploadFileList(dir) {
+  const list = $(`#ul-${dir}`);
+  if (!list) return;
+  const files = uploadFilesByDir[dir];
+  if (!files.length) { list.innerHTML = ''; return; }
+  list.innerHTML = files.map(f => `
+    <div class="upload-file-item">
+      <span class="uf-name" title="${f.name}">${f.name}</span>
+      <button type="button" onclick="uzRemoveFile('${dir}','${f.name.replace(/'/g,'\\\'')}')" title="Remove">✕</button>
+    </div>`).join('');
+}
+
+// ---- Upload & Continue ----
+async function handleUploadContinue() {
+  const btn = $('#btnUploadContinue');
+  const box = $('#uploadStatusBox');
+  const allFiles = [
+    ...uploadFilesByDir.incoming.map(f => ({f, dir:'incoming'})),
+    ...uploadFilesByDir.outgoing.map(f => ({f, dir:'outgoing'})),
+    ...uploadFilesByDir.vca.map(f => ({f, dir:'vca'})),
+  ];
+  if (!allFiles.length) {
+    box.innerHTML = '<div class="note err">Please add at least one file (Incoming or Outgoing) before continuing.</div>';
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Uploading…';
+  box.innerHTML = '';
+  try {
+    const fd = new FormData();
+    uploadFilesByDir.incoming.forEach(f => fd.append('incoming_files', f, f.name));
+    uploadFilesByDir.outgoing.forEach(f => fd.append('outgoing_files', f, f.name));
+    uploadFilesByDir.vca.forEach(f => fd.append('vca_files', f, f.name));
+    const r = await fetch('/upload-source', { method: 'POST', body: fd });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || `Upload failed (HTTP ${r.status})`);
+    }
+    const result = await r.json();
+    // Populate state direction files from upload result
+    ['incoming','outgoing','vca'].forEach(dir => {
+      const uploads = result[dir] || [];
+      state[dir].files = uploads.map(u => ({ id: u.id, name: u.name }));
+      state[dir].folderId = null;
+      state[dir].folderName = uploads.length ? uploads[0].name : null;
+      state[dir].results = {}; state[dir].skipped = false;
+    });
+    const totalFiles = (result.incoming.length + result.outgoing.length + result.vca.length);
+    box.innerHTML = `<div class="note ok">${totalFiles} file(s) uploaded successfully. Select a partner to continue.</div>`;
+    // Move to partner step
+    renderSteps('partner');
+    const pBox = $('#partners'); pBox.innerHTML = '';
+    if (!state.partners.length) {
+      pBox.innerHTML = '<span class="muted">No partners configured.</span>';
+    } else {
+      state.partners.forEach(p => pBox.appendChild(optButton(p.name, p.invoicePrefix, ()=>pickPartnerUpload(p))));
+    }
+    show('#s-partner');
+    smoothScrollTo('#s-partner');
+  } catch (err) {
+    box.innerHTML = `<div class="note err">${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Upload &amp; Continue →';
+  }
+}
+
+// ---- Upload mode: partner selection ----
+function pickPartnerUpload(p) {
+  state.partner = p;
+  state.month = null;
+  // Do NOT resetDirState — uploaded file IDs must survive partner selection
+  ['#s-pick','#s-gen','#s-upload-month'].forEach(x=>{ const el=$(x); if(el) el.hidden=true; });
+  // Rebuild month grid for upload mode
+  buildUploadMonthGrid();
+  renderSteps('month');
+  show('#s-upload-month');
+  smoothScrollTo('#s-upload-month');
+}
+
+// ---- Upload mode: month/year grid ----
+function buildUploadMonthGrid() {
+  const grid = $('#uploadMonthGrid');
+  grid.innerHTML = '';
+  const now = new Date();
+  const years = [now.getFullYear(), now.getFullYear() - 1];
+  const MONTH_NAMES = ["January","February","March","April","May","June",
+                       "July","August","September","October","November","December"];
+  // Show current + 5 prior months across this year and last year
+  const months = [];
+  for (let y of years) {
+    for (let m = 11; m >= 0; m--) {
+      months.push({ label: `${MONTH_NAMES[m]} ${y}`, year: y, monthIdx: m, monthNum: m + 1 });
+    }
+  }
+  // Sort: most recent first, show last 18
+  months.slice(0, 18).forEach(mo => {
+    grid.appendChild(optButton(mo.label, null, () => pickUploadMonth(mo)));
+  });
+}
+
+// ---- Upload mode: month picked ----
+function pickUploadMonth(mo) {
+  state.year = mo.year;
+  state.month = { name: mo.label, id: null }; // synthetic month object
+  ['#s-gen'].forEach(x=>{ const el=$(x); if(el) el.hidden=true; });
+  // Reload uploaded files into pick UI
+  renderSteps('pick');
+  show('#s-pick');
+  loadDirFilesFromUpload();
+  smoothScrollTo('#s-pick');
+}
+
+// ---- Upload mode: populate Pick step from uploaded state ----
+// uploadedFileRegistry: stash the full list of available uploaded files per direction
+// (separate from state[d].files which is the user's SELECTION)
+const uploadedFileRegistry = { vca: [], incoming: [], outgoing: [] };
+
+function loadDirFilesFromUpload() {
+  const partnerHasVca = !!(state.partner && state.partner.hasVca);
+  $('#vcaDirBlock').hidden = !partnerHasVca;
+  $('#btnSkipVca').hidden = !partnerHasVca;
+  $('#btnGenMonth').hidden = true; // not applicable for upload mode
+
+  ['vca','incoming','outgoing'].forEach(d => {
+    // Save available files, then clear selection (user must click to select)
+    uploadedFileRegistry[d] = [...state[d].files];
+    state[d].files = [];
+    state[d].results = {};
+    state[d].skipped = false;
+
+    $(`#${d}CountBox`).innerHTML = '';
+    $(`#${d}Dates`).innerHTML = '';
+    const available = uploadedFileRegistry[d];
+    const folderBox = $(`#${d}Folder`);
+    const dateBlock = $(`#${d}DateBlock`);
+    if (!available.length) {
+      folderBox.innerHTML = `<span class="muted">No ${cap(d)} files uploaded — you can skip this direction.</span>`;
+      dateBlock.hidden = true;
+      return;
+    }
+    folderBox.innerHTML = `Uploaded: <b>${available.length} file${available.length>1?'s':''}</b> — click to select`;
+    dateBlock.hidden = false;
+    const grid = $(`#${d}Dates`);
+    available.forEach(f => {
+      const b = document.createElement('button');
+      b.className = 'opt';
+      b.innerHTML = f.name;
+      b.onclick = () => toggleDate(d, f, b);
+      grid.appendChild(b);
+    });
+    renderDirSelectionNote(d);
+  });
+  $('#btnRunCounts').disabled = true;
+  updateRunCountsButton();
+}
 
 // ---------- Filename → date parsing (mirrors server.js parsePeriod) ----------
 // Each CBS date file is named by its date, so we derive a sortable date key + label
@@ -752,9 +1093,13 @@ renderRecent();
 const STEPS = [
   ["year","Year"], ["partner","Partner"], ["month","Month"], ["pick","Pick + Count"], ["gen","Generate"],
 ];
+const UPLOAD_STEPS = [
+  ["upload","Upload Files"], ["partner","Partner"], ["month","Month"], ["pick","Pick + Count"], ["gen","Generate"],
+];
 function renderSteps(active){
-  $('#steps').innerHTML = STEPS.map(([k,l],i)=>{
-    const idx = STEPS.findIndex(s=>s[0]===active);
+  const steps = state.sourceMode === 'upload' ? UPLOAD_STEPS : STEPS;
+  $('#steps').innerHTML = steps.map(([k,l],i)=>{
+    const idx = steps.findIndex(s=>s[0]===active);
     const cls = k===active?'active':(i<idx?'done':'');
     return `<span class="pill ${cls}"><b>${i+1}</b> ${l}</span>`;
   }).join('');
@@ -785,6 +1130,8 @@ function monthSortKey(name){
 }
 
 async function init(){
+  // Show source selector first; Drive scan happens after user picks "Google Drive"
+  show('#s-source');
   renderSteps('year');
   try{
     const cfg = await fetch('/config').then(r=>r.json());
@@ -801,19 +1148,26 @@ async function init(){
       $('#userChip').hidden = false;
       $('#logoutBtn').hidden = false;
     }
+    // Pre-load year folders in background (used when Drive mode is selected)
     const { items } = await api('/list-files', { folderId: state.mainFolderId });
-    // Year folders = subfolders named with just a 4-digit year (e.g. "2026", "2025").
     const yearItems = items.filter(i => i.isFolder && /^20\d{2}$/.test(i.name.trim()));
     state.yearFolders = {};
     yearItems.forEach(i => { state.yearFolders[+i.name.trim()] = i; });
     const years = yearItems.map(i => +i.name.trim()).sort((a,b) => b - a);
-    const box = $('#years'); box.innerHTML='';
-    if(!years.length){
-      box.innerHTML = '<span class="muted">No year folders found. Check sharing with the service account.</span>';
-      return;
-    }
-    years.forEach(y => box.appendChild(optButton(String(y), null, ()=>pickYear(y))));
-  }catch(e){ errNote($('#years'), e); }
+    state._driveYears = years; // stash for when user picks Drive source
+  }catch(e){ console.warn('Drive scan failed:', e.message); state._driveYears = []; }
+}
+
+function showDriveYears(){
+  const box = $('#years'); box.innerHTML='';
+  const years = state._driveYears || [];
+  if(!years.length){
+    box.innerHTML = '<span class="muted">No year folders found. Check sharing with the service account.</span>';
+    return;
+  }
+  years.forEach(y => box.appendChild(optButton(String(y), null, ()=>pickYear(y))));
+  renderSteps('year'); show('#s-year');
+  smoothScrollTo('#s-year');
 }
 
 async function pickYear(y){
