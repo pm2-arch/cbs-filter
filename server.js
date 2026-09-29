@@ -929,8 +929,8 @@ function buildDirectionFilters(partner, direction, allProductCodes, code) {
   const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
   const filters = [
     allProductCodes.length > 1
-      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
-      : { column: "A", altColumns: ["branch_id"], equals: code },
+      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes, caseSensitive: false }
+      : { column: "A", altColumns: ["branch_id"], equals: code, caseSensitive: false },
   ];
   // SETTLED is always required for incoming/VCA — not configurable
   if (direction !== "outgoing") {
@@ -1056,8 +1056,8 @@ function buildFiltersForDirection(dir, allProductCodes, code) {
   const TRANSFER_MODE_ALTS = ["Transfer mode", "transfer mode", "Transfer Mode"];
   const filters = [
     allProductCodes.length > 1
-      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes }
-      : { column: "A", altColumns: ["branch_id"], equals: code },
+      ? { column: "A", altColumns: ["branch_id"], includeValues: allProductCodes, caseSensitive: false }
+      : { column: "A", altColumns: ["branch_id"], equals: code, caseSensitive: false },
   ];
   if (dir.mode !== "outgoing") {
     filters.push({ column: "Status", altColumns: ["status"], equals: "SETTLED", caseSensitive: false });
