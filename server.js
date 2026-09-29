@@ -1468,7 +1468,7 @@ const MONTH_LOOKUP = {
 function parsePeriod(period) {
   const s = String(period || "").trim();
   // ISO: 2026-05-26 / 2026/05/26 / 2026.05.26
-  let m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  let m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?![0-9])/);
   if (m && +m[2] >= 1 && +m[2] <= 12) return { year: +m[1], month: +m[2], day: +m[3] };
   // "2026 May 27" — year-first with month name
   m = s.match(/\b(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/);

@@ -1746,7 +1746,7 @@ $('#btnGen').onclick = async ()=>{
         year: state.year,
         directionId: run.dirId,      // dynamic system: server resolves from partner.directions
         direction: run.d,             // legacy fallback (also used by server as secondary lookup)
-        period: run.file.name,
+        period: run.label || run.file.name,
         invoiceNumber,
         previouslyCharged: dates.length === 1 ? previouslyCharged : [],
         previousPdfFileIds: prevPdfByDate[run.dateKey] || [],
@@ -1760,7 +1760,7 @@ $('#btnGen').onclick = async ()=>{
         invoiceNumber: r.invoiceNumber || invoiceNumber,
         invoiceNumberReused: !!r.invoiceNumberReused,
         reportReused: !!r.reportReused,
-        period: run.file.name,
+        period: run.label || run.file.name,
         dateFolderName: r.outputFolder && r.outputFolder.dateFolderName,
         dateFolderId: r.outputFolder && r.outputFolder.dateFolderId,
         amountDue: r.amountDue,
