@@ -1074,12 +1074,12 @@ function buildFiltersForDirection(dir, allProductCodes, code) {
       }
       case "channel_filter": {
         const channels = Array.isArray(rule.params?.channels) ? rule.params.channels : [];
-        if (channels.length > 0) filters.push({ column: "Channel", includeValues: channels });
+        if (channels.length > 0) filters.push({ column: "Channel", altColumns: ["channel"], includeValues: channels, caseSensitive: false });
         break;
       }
       case "channel_exclude": {
         const channels = Array.isArray(rule.params?.channels) ? rule.params.channels : [];
-        if (channels.length > 0) filters.push({ column: "Channel", excludeValues: channels });
+        if (channels.length > 0) filters.push({ column: "Channel", altColumns: ["channel"], excludeValues: channels, caseSensitive: false });
         break;
       }
       case "status_filter": {
