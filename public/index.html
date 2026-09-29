@@ -917,7 +917,7 @@ function parseFileDate(name){
   const pad = n => String(n).padStart(2,'0');
   const mk = (y,mo,da) => ({ key:`${y}${pad(mo)}${pad(da)}`, label:`${pad(mo)}/${pad(da)}/${y}`, y, m:mo, d:da });
   let m;
-  if((m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/)) && +m[2]>=1 && +m[2]<=12) return mk(+m[1],+m[2],+m[3]);
+  if((m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?![0-9])/)) && +m[2]>=1 && +m[2]<=12) return mk(+m[1],+m[2],+m[3]);
   if((m = s.match(/\b(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/)) && INV_MONTH_LOOKUP[m[2].toLowerCase()]) return mk(+m[1],INV_MONTH_LOOKUP[m[2].toLowerCase()],+m[3]);
   if((m = s.match(/([A-Za-z]+)\s+(\d{1,2})(?:\s*[-–]\s*\d{1,2})?(?:,)?\s*(\d{4})/)) && INV_MONTH_LOOKUP[m[1].toLowerCase()]) return mk(+m[3],INV_MONTH_LOOKUP[m[1].toLowerCase()],+m[2]);
   if((m = s.match(/\b(\d{8})\b/))){
