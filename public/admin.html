@@ -316,14 +316,18 @@ const DISBURSE_HTML = {
 };
 
 function renderFeeFields(pfx) {
-  const type = document.getElementById(`${pfx}-type`).value;
-  let html = FEE_TYPE_HTML[type] || '';
+  const typeEl = document.getElementById(`${pfx}-type`);
+  const fieldsEl = document.getElementById(`${pfx}-fields`);
+  if (!typeEl || !fieldsEl) return;
+  let html = FEE_TYPE_HTML[typeEl.value] || '';
   html = html.replace(/PFX/g, pfx.toUpperCase());
-  document.getElementById(`${pfx}-fields`).innerHTML = html;
+  fieldsEl.innerHTML = html;
 }
 function renderDisburseFields() {
-  const type = document.getElementById('disburse-type').value;
-  document.getElementById('disburse-fields').innerHTML = DISBURSE_HTML[type] || '';
+  const typeEl = document.getElementById('disburse-type');
+  const fieldsEl = document.getElementById('disburse-fields');
+  if (!typeEl || !fieldsEl) return;
+  fieldsEl.innerHTML = DISBURSE_HTML[typeEl.value] || '';
 }
 
 function addTierRow(pfx, maxAmt, fee) {
