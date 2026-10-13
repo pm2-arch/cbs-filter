@@ -1458,8 +1458,9 @@ async function runBothCounts(){
   }
   if(!jobs.length){ btn.disabled=false; btn.textContent='Run count check'; return; }
 
-  // Throttle to 3 concurrent count-checks to avoid Google quota limits.
-  const settled = await runPooled(jobs, 3, (j) =>
+  // Throttle to 1 concurrent count-check — CBS files can be very large; loading
+  // multiple simultaneously risks OOM on the Cloud Run container.
+  const settled = await runPooled(jobs, 1, (j) =>
     api('/filter', {
       sourceFileId: j.f.id, headerRow: HEADER_ROW,
       filters:[ colAFilter, { column:'Status', equals: 'SETTLED' } ],
