@@ -1332,6 +1332,121 @@ function parseExcelBuffer(buffer, sheetName) {
 }
 
 // ---------------------------------------------------------------------------
+// Streaming count for xlsx files — avoids loading full workbook into memory.
+// Used by the /filter endpoint when output.countOnly === true.
+// ---------------------------------------------------------------------------
+async function countMatchingRowsStreaming(buffer, sheetName, filters) {
+  const ExcelJS = require("exceljs");
+
+  function cellToStr(v) {
+    if (v == null) return "";
+    if (typeof v === "object") {
+      if (v.richText) return v.richText.map((r) => r.text || "").join("");
+      if (v instanceof Date) return v.toISOString();
+      if (v.error) return "";
+      if (v.result != null) return String(v.result).trim();
+      return String(v).trim();
+    }
+    return String(v).trim();
+  }
+
+  function resolveFiltersForHeader(header) {
+    return (filters || []).map((f) => {
+      let idx = -1;
+      try { idx = resolveColumn(f.column, header); } catch (_) { idx = -1; }
+      if (idx === -1 && Array.isArray(f.altColumns)) {
+        for (const alt of f.altColumns) {
+          try { idx = resolveColumn(alt, header); break; } catch (_) {}
+        }
+      }
+      return { ...f, index: idx };
+    });
+  }
+
+  function matchRow(vals, resolved) {
+    return resolved.every((f) => {
+      if (f.index < 0) return true;
+      const val = String(vals[f.index] ?? "").trim();
+      if (Array.isArray(f.includeValues) && f.includeValues.length > 0) {
+        const valCmp = f.caseSensitive === false ? val.toLowerCase() : val;
+        return f.includeValues.some((inc) => {
+          const incCmp = f.caseSensitive === false ? String(inc).toLowerCase() : String(inc);
+          return valCmp === incCmp;
+        });
+      }
+      if (Array.isArray(f.excludeValues) && f.excludeValues.length > 0) {
+        const valCmp = f.caseSensitive === false ? val.toLowerCase() : val;
+        return !f.excludeValues.some((ex) => {
+          const exCmp = f.caseSensitive === false ? String(ex).toLowerCase() : String(ex);
+          return valCmp === exCmp;
+        });
+      }
+      if (f.notEquals !== undefined) {
+        const ne = String(f.notEquals ?? "").trim();
+        return f.caseSensitive === false ? val.toLowerCase() !== ne.toLowerCase() : val !== ne;
+      }
+      const eq = String(f.equals ?? "").trim();
+      return f.caseSensitive === false ? val.toLowerCase() === eq.toLowerCase() : val === eq;
+    });
+  }
+
+  const cbsResults = [];
+
+  const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(
+    Readable.from(buffer),
+    { entries: "emit", sharedStrings: "cache", hyperlinks: "ignore", styles: "ignore", worksheets: "emit" }
+  );
+
+  for await (const worksheetReader of workbookReader) {
+    const wsName = worksheetReader.name;
+    const wantThisSheet = !sheetName || wsName === sheetName;
+
+    if (!wantThisSheet) {
+      // Must consume rows to avoid stalling the zip parser
+      for await (const _ of worksheetReader) {}
+      continue;
+    }
+
+    let header = null;
+    let resolved = null;
+    let isCbs = false;
+    let headerBuf = [];
+    let wsScanned = 0;
+    let wsCount = 0;
+
+    for await (const row of worksheetReader) {
+      const numCols = row.values.length - 1; // row.values is 1-indexed
+      const vals = [];
+      for (let c = 1; c <= numCols; c++) vals.push(cellToStr(row.values[c]));
+
+      if (header === null) {
+        headerBuf.push(vals);
+        if (hasCbsHeaders([vals])) {
+          header = vals;
+          isCbs = true;
+          resolved = resolveFiltersForHeader(header);
+        } else if (headerBuf.length >= 20) {
+          // No CBS header found in first 20 rows — not a CBS tab, skip it
+          break;
+        }
+      } else {
+        wsScanned++;
+        if (matchRow(vals, resolved)) wsCount++;
+      }
+    }
+
+    if (isCbs) cbsResults.push({ title: wsName, count: wsCount, scanned: wsScanned });
+  }
+
+  if (cbsResults.length === 0) return { count: 0, totalScanned: 0, sheetTitle: "" };
+  return {
+    count: cbsResults.reduce((s, r) => s + r.count, 0),
+    totalScanned: cbsResults.reduce((s, r) => s + r.scanned, 0),
+    sheetTitle: cbsResults.map((r) => r.title).join("+"),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Write filtered rows to a new Google Sheet
 // ---------------------------------------------------------------------------
 async function writeOutputSheet(sheets, drive, name, header, dataRows, destFolderId) {
@@ -3846,6 +3961,29 @@ app.post("/filter", authMiddleware, async (req, res) => {
     if (!sourceFileId) return res.status(400).json({ error: "Missing sourceFileId" });
     if (!Array.isArray(filters) || filters.length === 0) {
       return res.status(400).json({ error: "filters[] is required" });
+    }
+
+    // For count-only requests on Drive xlsx files, use streaming parser to avoid OOM
+    // on large CBS files. Skip for uploaded files (already in memory) and native Sheets
+    // (which use the Sheets API and don't load the file as a binary buffer).
+    if (output.countOnly && !String(sourceFileId).startsWith("upload:")) {
+      const { drive: driveClient } = await getClients();
+      const fileMeta = await driveClient.files.get({ fileId: sourceFileId, fields: "name,mimeType", supportsAllDrives: true });
+      if (fileMeta.data.mimeType !== "application/vnd.google-apps.spreadsheet") {
+        const fileResp = await driveClient.files.get(
+          { fileId: sourceFileId, alt: "media", supportsAllDrives: true },
+          { responseType: "arraybuffer" }
+        );
+        const buf = Buffer.from(fileResp.data);
+        const streamResult = await countMatchingRowsStreaming(buf, sheetName || null, filters);
+        return res.json({
+          ok: true,
+          count: streamResult.count,
+          sheetTitle: streamResult.sheetTitle,
+          sourceName: fileMeta.data.name,
+          totalScanned: streamResult.totalScanned,
+        });
+      }
     }
 
     const { header, matches, sheetTitle, sourceName, totalScanned } = await getMatchedRows({
