@@ -1332,10 +1332,11 @@ function parseExcelBuffer(buffer, sheetName) {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming count for xlsx files — avoids loading full workbook into memory.
-// Used by the /filter endpoint when output.countOnly === true.
+// Streaming xlsx filter — reads row-by-row via ExcelJS to avoid OOM on large files.
+// Returns { header, matches, totalScanned, sheetTitle } where matches contains only
+// the rows that passed all filters. Memory usage is O(matching rows), not O(all rows).
 // ---------------------------------------------------------------------------
-async function countMatchingRowsStreaming(buffer, sheetName, filters) {
+async function filterXlsxStreaming(buffer, sheetName, filters) {
   const ExcelJS = require("exceljs");
 
   function cellToStr(v) {
@@ -1350,13 +1351,13 @@ async function countMatchingRowsStreaming(buffer, sheetName, filters) {
     return String(v).trim();
   }
 
-  function resolveFiltersForHeader(header) {
+  function resolveFiltersForHeader(hdr) {
     return (filters || []).map((f) => {
       let idx = -1;
-      try { idx = resolveColumn(f.column, header); } catch (_) { idx = -1; }
+      try { idx = resolveColumn(f.column, hdr); } catch (_) { idx = -1; }
       if (idx === -1 && Array.isArray(f.altColumns)) {
         for (const alt of f.altColumns) {
-          try { idx = resolveColumn(alt, header); break; } catch (_) {}
+          try { idx = resolveColumn(alt, hdr); break; } catch (_) {}
         }
       }
       return { ...f, index: idx };
@@ -1402,17 +1403,16 @@ async function countMatchingRowsStreaming(buffer, sheetName, filters) {
     const wantThisSheet = !sheetName || wsName === sheetName;
 
     if (!wantThisSheet) {
-      // Must consume rows to avoid stalling the zip parser
-      for await (const _ of worksheetReader) {}
+      for await (const _ of worksheetReader) {} // must consume to avoid stalling zip parser
       continue;
     }
 
     let header = null;
     let resolved = null;
     let isCbs = false;
-    let headerBuf = [];
+    const headerBuf = [];
     let wsScanned = 0;
-    let wsCount = 0;
+    const wsMatches = [];
 
     for await (const row of worksheetReader) {
       const numCols = row.values.length - 1; // row.values is 1-indexed
@@ -1426,24 +1426,24 @@ async function countMatchingRowsStreaming(buffer, sheetName, filters) {
           isCbs = true;
           resolved = resolveFiltersForHeader(header);
         } else if (headerBuf.length >= 20) {
-          // No CBS header found in first 20 rows — not a CBS tab, skip it
-          break;
+          break; // no CBS header in first 20 rows — skip this tab
         }
       } else {
         wsScanned++;
-        if (matchRow(vals, resolved)) wsCount++;
+        if (matchRow(vals, resolved)) wsMatches.push(vals);
       }
     }
 
-    if (isCbs) cbsResults.push({ title: wsName, count: wsCount, scanned: wsScanned });
+    if (isCbs) cbsResults.push({ title: wsName, header, matches: wsMatches, scanned: wsScanned });
   }
 
-  if (cbsResults.length === 0) return { count: 0, totalScanned: 0, sheetTitle: "" };
-  return {
-    count: cbsResults.reduce((s, r) => s + r.count, 0),
-    totalScanned: cbsResults.reduce((s, r) => s + r.scanned, 0),
-    sheetTitle: cbsResults.map((r) => r.title).join("+"),
-  };
+  if (cbsResults.length === 0) return { header: [], matches: [], totalScanned: 0, sheetTitle: "" };
+
+  const combinedHeader = cbsResults[0].header;
+  const combinedMatches = cbsResults.flatMap((r) => r.matches);
+  const totalScanned = cbsResults.reduce((s, r) => s + r.scanned, 0);
+  const sheetTitle = cbsResults.map((r) => r.title).join("+");
+  return { header: combinedHeader, matches: combinedMatches, totalScanned, sheetTitle };
 }
 
 // ---------------------------------------------------------------------------
@@ -1487,16 +1487,41 @@ async function writeOutputSheet(sheets, drive, name, header, dataRows, destFolde
 // ---------------------------------------------------------------------------
 async function getMatchedRows({ sourceFileId, sheetName, headerRow, filters }) {
   const { drive, sheets } = await getClients();
-  const { rows, sheetTitle, sourceName } = await readSourceRows(drive, sheets, sourceFileId, sheetName);
 
-  // If the tab was absent (readNativeSheet/parseExcelBuffer returned []), treat as empty.
-  if (rows.length === 0) {
-    return { header: [], matches: [], sheetTitle, sourceName: sourceName || "", totalScanned: 0 };
+  // Uploaded file path — bypass Drive entirely; rows already in memory.
+  if (String(sourceFileId).startsWith("upload:")) {
+    const stored = uploadStoreGet(sourceFileId);
+    if (!stored) throw new Error("Uploaded file has expired (2-hour limit). Please re-upload and try again.");
+    return _filterRows(stored.rows, stored.sheetTitle, stored.name, headerRow, filters);
   }
 
-  // Auto-detect header row. V5/TopJuan CBS files have headers at row 1 (snake_case
-  // column names); Magic CBS files have headers at row 13. If the specified headerRow
-  // doesn't contain any recognised header keywords, scan from row 1 to find the real one.
+  // Check file type so we can choose the right reading strategy.
+  const meta = await drive.files.get({ fileId: sourceFileId, fields: "id,name,mimeType", supportsAllDrives: true });
+  const mimeType = meta.data.mimeType;
+  const sourceName = meta.data.name;
+
+  if (mimeType === "application/vnd.google-apps.spreadsheet") {
+    // Native Sheets: read via API (already paginated, no OOM risk).
+    const { rows, sheetTitle } = await readNativeSheet(sheets, sourceFileId, sheetName);
+    return _filterRows(rows, sheetTitle, sourceName, headerRow, filters);
+  }
+
+  // Binary xlsx/xls file in Drive: use ExcelJS streaming to avoid loading the full
+  // workbook into memory. Only matching rows are kept — O(matches) not O(all rows).
+  const resp = await drive.files.get(
+    { fileId: sourceFileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" }
+  );
+  const buf = Buffer.from(resp.data);
+  const { header, matches, totalScanned, sheetTitle } = await filterXlsxStreaming(buf, sheetName || null, filters);
+  return { header, matches, sheetTitle, sourceName, totalScanned };
+}
+
+// Internal: apply filters to an in-memory rows array (used for native Sheets + upload store paths).
+function _filterRows(rows, sheetTitle, sourceName, headerRow, filters) {
+  if (rows.length === 0) return { header: [], matches: [], sheetTitle, sourceName: sourceName || "", totalScanned: 0 };
+
+  // Auto-detect header row.
   const HEADER_KEYWORDS = /^(status|amount|cbs_amount_inward|receiving branch name|sending branch name|branch_id|reference number|channel)$/i;
   let effectiveHeaderRow = headerRow;
   const specifiedRowVals = (rows[headerRow - 1] || []).map((h) => String(h ?? "").trim());
@@ -1510,31 +1535,24 @@ async function getMatchedRows({ sourceFileId, sheetName, headerRow, filters }) {
       }
     }
   }
-  if (rows.length < effectiveHeaderRow) {
-    throw new Error(`Source has fewer rows than headerRow (${effectiveHeaderRow})`);
-  }
+  if (rows.length < effectiveHeaderRow) throw new Error(`Source has fewer rows than headerRow (${effectiveHeaderRow})`);
   const header = (rows[effectiveHeaderRow - 1] || []).map((h) => String(h ?? "").trim());
   const dataRows = rows.slice(effectiveHeaderRow);
 
-  // Resolve filters. Each filter may specify:
-  //   column      – primary column name/letter
-  //   altColumns  – fallback column names tried in order when primary not found
-  //   caseSensitive (default true) – whether equals comparison is case-sensitive
   const resolved = (filters || []).map((f) => {
     let idx = -1;
     try { idx = resolveColumn(f.column, header); } catch (_) { idx = -1; }
     if (idx === -1 && Array.isArray(f.altColumns)) {
       for (const alt of f.altColumns) {
-        try { idx = resolveColumn(alt, header); break; } catch (_) { /* try next */ }
+        try { idx = resolveColumn(alt, header); break; } catch (_) {}
       }
     }
     return { ...f, index: idx };
   });
   const matches = dataRows.filter((row) =>
     resolved.every((f) => {
-      if (f.index < 0) return true; // column not found in header → skip this filter
+      if (f.index < 0) return true;
       const val = String(row[f.index] ?? "").trim();
-      // includeValues: row passes only when val matches one of the listed values
       if (Array.isArray(f.includeValues) && f.includeValues.length > 0) {
         const valCmp = f.caseSensitive === false ? val.toLowerCase() : val;
         return f.includeValues.some((inc) => {
@@ -1542,7 +1560,6 @@ async function getMatchedRows({ sourceFileId, sheetName, headerRow, filters }) {
           return valCmp === incCmp;
         });
       }
-      // excludeValues: row is excluded when val matches any entry in the list
       if (Array.isArray(f.excludeValues) && f.excludeValues.length > 0) {
         const valCmp = f.caseSensitive === false ? val.toLowerCase() : val;
         return !f.excludeValues.some((ex) => {
@@ -1550,17 +1567,12 @@ async function getMatchedRows({ sourceFileId, sheetName, headerRow, filters }) {
           return valCmp === exCmp;
         });
       }
-      // notEquals: row passes when value does NOT equal the specified string
       if (f.notEquals !== undefined) {
         const ne = String(f.notEquals ?? "").trim();
-        return f.caseSensitive === false
-          ? val.toLowerCase() !== ne.toLowerCase()
-          : val !== ne;
+        return f.caseSensitive === false ? val.toLowerCase() !== ne.toLowerCase() : val !== ne;
       }
       const eq = String(f.equals ?? "").trim();
-      return f.caseSensitive === false
-        ? val.toLowerCase() === eq.toLowerCase()
-        : val === eq;
+      return f.caseSensitive === false ? val.toLowerCase() === eq.toLowerCase() : val === eq;
     })
   );
   return { header, matches, sheetTitle, sourceName, totalScanned: dataRows.length };
@@ -3266,8 +3278,12 @@ app.post("/build-billing", async (req, res) => {
       }), { label: "reading new sheet metadata" });
       const sheet1 = (newSheetMeta.data.sheets || []).find(s => s.properties.title === "Sheet1");
       const sheet1Id = sheet1?.properties?.sheetId ?? 0;
+      // Deduplicate tab names — duplicate directions (same name) would cause addSheet to fail.
+      const seenTabNames = new Set();
       const extraTabs = partnerDirs.length > 0
-        ? partnerDirs.map(d => ({ addSheet: { properties: { title: d.name } } }))
+        ? partnerDirs
+            .filter(d => { if (seenTabNames.has(d.name)) return false; seenTabNames.add(d.name); return true; })
+            .map(d => ({ addSheet: { properties: { title: d.name } } }))
         : [
             { addSheet: { properties: { title: "QRPH" } } },
             ...(partnerHasVca ? [{ addSheet: { properties: { title: "VCA" } } }] : []),
@@ -3963,29 +3979,7 @@ app.post("/filter", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "filters[] is required" });
     }
 
-    // For count-only requests on Drive xlsx files, use streaming parser to avoid OOM
-    // on large CBS files. Skip for uploaded files (already in memory) and native Sheets
-    // (which use the Sheets API and don't load the file as a binary buffer).
-    if (output.countOnly && !String(sourceFileId).startsWith("upload:")) {
-      const { drive: driveClient } = await getClients();
-      const fileMeta = await driveClient.files.get({ fileId: sourceFileId, fields: "name,mimeType", supportsAllDrives: true });
-      if (fileMeta.data.mimeType !== "application/vnd.google-apps.spreadsheet") {
-        const fileResp = await driveClient.files.get(
-          { fileId: sourceFileId, alt: "media", supportsAllDrives: true },
-          { responseType: "arraybuffer" }
-        );
-        const buf = Buffer.from(fileResp.data);
-        const streamResult = await countMatchingRowsStreaming(buf, sheetName || null, filters);
-        return res.json({
-          ok: true,
-          count: streamResult.count,
-          sheetTitle: streamResult.sheetTitle,
-          sourceName: fileMeta.data.name,
-          totalScanned: streamResult.totalScanned,
-        });
-      }
-    }
-
+    // getMatchedRows now uses ExcelJS streaming for xlsx files — no separate countOnly path needed.
     const { header, matches, sheetTitle, sourceName, totalScanned } = await getMatchedRows({
       sourceFileId, sheetName, headerRow, filters,
     });
