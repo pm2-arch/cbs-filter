@@ -3169,14 +3169,14 @@ app.post("/build-billing", async (req, res) => {
       await initBlankSummary(sheets, reportFileId, partnerDirs.length > 0 ? partnerDirs : null);
     }
 
-    // ---- Ensure VCA tab exists (blank report includes it; reused reports may predate VCA) ----
-    if (partnerHasVca && isVcaDir) {
-      stage = "ensuring VCA tab";
-      const vcaSheetsMeta = await withRetry(() => sheets.spreadsheets.get({
+    // ---- Ensure target tab exists (blank reports include all tabs; reused reports may be missing new ones) ----
+    {
+      stage = "ensuring target tab exists";
+      const tabsMeta = await withRetry(() => sheets.spreadsheets.get({
         spreadsheetId: reportFileId,
-        fields: "sheets(properties(sheetId,title))",
-      }), { label: "reading sheet list for VCA check" });
-      const existingTitles = (vcaSheetsMeta.data.sheets || []).map((s) => s.properties.title);
+        fields: "sheets(properties(title))",
+      }), { label: "reading sheet list for tab check" });
+      const existingTitles = (tabsMeta.data.sheets || []).map((s) => s.properties.title);
       if (!existingTitles.includes(dirName)) {
         await withRetry(() => sheets.spreadsheets.batchUpdate({
           spreadsheetId: reportFileId,
